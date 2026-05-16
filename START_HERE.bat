@@ -1,27 +1,20 @@
 @echo off
-chcp 65001 >nul
-title UE5 AI Assistant — Автоустановка
+title UE5 AI Assistant - Auto Setup
 
 echo.
-echo  ╔══════════════════════════════════════════════════╗
-echo  ║       UE5 AI Assistant — Auto Setup             ║
-echo  ║                                                  ║
-echo  ║  Запускаю автоматическую установку...            ║
-echo  ║  Просто наблюдай — всё сделается само.           ║
-echo  ╚══════════════════════════════════════════════════╝
+echo  ====================================================
+echo   UE5 AI Assistant - Auto Setup
+echo   Please wait, everything installs automatically...
+echo  ====================================================
 echo.
 
-:: Разрешаем запуск PowerShell скриптов
 powershell -Command "Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass -Force" >nul 2>&1
 
-:: Запускаем основной PowerShell установщик
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup_auto.ps1"
 
-:: Если PowerShell вылетел с ошибкой
 if errorlevel 1 (
     echo.
-    echo  [ОШИБКА] Что-то пошло не так.
-    echo  Смотри файл setup_log.txt для деталей.
+    echo  [ERROR] Setup failed. Check setup_log.txt for details.
     echo.
     pause
 )
