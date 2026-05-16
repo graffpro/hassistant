@@ -34,7 +34,7 @@ APP_DIR       = Path(__file__).parent.parent
 # Источник обновлений — можно поменять на свой сервер / GitHub
 UPDATE_SOURCES = [
     # GitHub releases (основной)
-    "https://api.github.com/repos/YOUR_USERNAME/ue5-assistant/releases/latest",
+    "https://api.github.com/repos/graffpro/hassistant/releases/latest",
     # Локальная сеть (запасной)
     # "\\\\fileserver\\updates\\ue5_assistant",
 ]
