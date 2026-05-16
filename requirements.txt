@@ -1,0 +1,32 @@
+# Core
+PyQt6>=6.6.0
+PyQt6-Qt6>=6.6.0
+
+# AI / LLM
+ollama>=0.2.0
+openai-whisper>=20231117
+
+# Vision
+opencv-python>=4.9.0
+pytesseract>=0.3.10
+Pillow>=10.2.0
+mss>=9.0.1
+
+# Automation
+pyautogui>=0.9.54
+pywin32>=306
+comtypes>=1.4.1
+pynput>=1.7.6
+
+# Memory
+chromadb>=0.4.22
+sentence-transformers>=2.5.1
+
+# Audio
+sounddevice>=0.4.6
+numpy>=1.26.0
+
+# Utils
+pydantic>=2.6.0
+loguru>=0.7.2
+python-dotenv>=1.0.1
