@@ -1,84 +1,70 @@
-# ============================================================
-#  UE5 AI Assistant — Полностью автоматическая установка
-#  Запускается из START_HERE.bat
-#  Не требует никаких действий пользователя
+﻿# ============================================================
+#  UE5 AI Assistant - Fully Automatic Setup
+#  Called from START_HERE.bat
 # ============================================================
 
 $ErrorActionPreference = "Continue"
-$ProgressPreference    = "SilentlyContinue"   # убирает медленный прогресс-бар Invoke-WebRequest
+$ProgressPreference    = "SilentlyContinue"
 
-$SCRIPT_DIR  = Split-Path -Parent $MyInvocation.MyCommand.Path
-$TOOLS_DIR   = "$SCRIPT_DIR\tools"
-$LOG_FILE    = "$SCRIPT_DIR\setup_log.txt"
+$SCRIPT_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
+$TOOLS_DIR  = "$SCRIPT_DIR\tools"
+$LOG_FILE   = "$SCRIPT_DIR\setup_log.txt"
 
 $null = New-Item -ItemType Directory -Force -Path $TOOLS_DIR
 
-function Log($msg) {
-    $line = "[$(Get-Date -Format 'HH:mm:ss')] $msg"
-    Write-Host $line -ForegroundColor Cyan
-    Add-Content -Path $LOG_FILE -Value $line -Encoding UTF8
-}
-
-function OK($msg)   { Write-Host "  [OK] $msg"    -ForegroundColor Green  }
-function WARN($msg) { Write-Host "  [!!] $msg"    -ForegroundColor Yellow }
-function STEP($msg) { Write-Host "`n>>> $msg"     -ForegroundColor Magenta }
-function ERR($msg)  { Write-Host "  [X] $msg"     -ForegroundColor Red    }
+function Log($msg)  { $line = "[$(Get-Date -Format 'HH:mm:ss')] $msg"; Write-Host $line -ForegroundColor Cyan; Add-Content -Path $LOG_FILE -Value $line -Encoding UTF8 }
+function OK($msg)   { Write-Host "  [OK] $msg"  -ForegroundColor Green  }
+function WARN($msg) { Write-Host "  [!!] $msg"  -ForegroundColor Yellow }
+function STEP($msg) { Write-Host "`n>>> $msg"   -ForegroundColor Magenta }
+function ERR($msg)  { Write-Host "  [X] $msg"   -ForegroundColor Red    }
 
 function Download($url, $dest) {
     if (Test-Path $dest) { return }
-    Log "Скачиваю: $(Split-Path $dest -Leaf)"
+    Log "Downloading: $(Split-Path $dest -Leaf)"
     try {
         Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing
-        OK "Скачано"
+        OK "Downloaded"
     } catch {
-        ERR "Ошибка загрузки: $_"
+        ERR "Download failed: $_"
     }
 }
 
-# ─────────────────────────────────────────────────────────────
-# 0. ШАПКА
-# ─────────────────────────────────────────────────────────────
 Clear-Host
-Write-Host @"
+Write-Host "
+  ==========================================
+    UE5 AI Assistant - Auto Setup v1.0
+    Please wait while everything installs...
+  ==========================================
+" -ForegroundColor Magenta
 
-  ██╗   ██╗███████╗███████╗     █████╗ ██╗
-  ██║   ██║██╔════╝██╔════╝    ██╔══██╗██║
-  ██║   ██║█████╗  ███████╗    ███████║██║
-  ██║   ██║██╔══╝  ╚════██║    ██╔══██║██║
-  ╚██████╔╝███████╗███████║    ██║  ██║██║
-   ╚═════╝ ╚══════╝╚══════╝    ╚═╝  ╚═╝╚═╝
-     Autonomous Assistant — Auto Setup v1.0
+Log "=== Setup started ==="
+Log "Project folder: $SCRIPT_DIR"
 
-"@ -ForegroundColor Magenta
-
-Log "=== Начало установки ==="
-Log "Папка проекта: $SCRIPT_DIR"
-
-# ─────────────────────────────────────────────────────────────
+# ----------------------------------------------------------
 # 1. VISUAL C++ REDISTRIBUTABLE
-# ─────────────────────────────────────────────────────────────
-STEP "Шаг 1/7 — Visual C++ Redistributable"
+# ----------------------------------------------------------
+STEP "Step 1/7 - Visual C++ Redistributable"
 
 $vcKey = "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
 $vcInstalled = (Test-Path $vcKey) -and ((Get-ItemProperty $vcKey -ErrorAction SilentlyContinue).Installed -eq 1)
 
 if ($vcInstalled) {
-    OK "Visual C++ уже установлен"
+    OK "Visual C++ already installed"
 } else {
     $vcUrl  = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
     $vcPath = "$TOOLS_DIR\vc_redist.x64.exe"
     Download $vcUrl $vcPath
     if (Test-Path $vcPath) {
-        Log "Устанавливаю Visual C++..."
+        Log "Installing Visual C++..."
         Start-Process $vcPath -ArgumentList "/install /quiet /norestart" -Wait
-        OK "Visual C++ установлен"
+        OK "Visual C++ installed"
     }
 }
 
-# ─────────────────────────────────────────────────────────────
+# ----------------------------------------------------------
 # 2. PYTHON
-# ─────────────────────────────────────────────────────────────
-STEP "Шаг 2/7 — Python 3.11"
+# ----------------------------------------------------------
+STEP "Step 2/7 - Python 3.11"
 
 $python = $null
 foreach ($cmd in @("python", "python3", "py")) {
@@ -86,236 +72,204 @@ foreach ($cmd in @("python", "python3", "py")) {
         $ver = & $cmd --version 2>&1
         if ($ver -match "3\.(1[1-9]|[2-9]\d)") {
             $python = $cmd
-            OK "Python найден: $ver ($cmd)"
+            OK "Python found: $ver ($cmd)"
             break
         }
     } catch {}
 }
 
 if (-not $python) {
-    WARN "Python 3.11+ не найден — скачиваю..."
+    WARN "Python 3.11+ not found - downloading..."
     $pyUrl  = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe"
     $pyPath = "$TOOLS_DIR\python-3.11.9-amd64.exe"
     Download $pyUrl $pyPath
 
     if (Test-Path $pyPath) {
-        Log "Устанавливаю Python 3.11.9..."
+        Log "Installing Python 3.11.9..."
         Start-Process $pyPath -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0" -Wait
-        OK "Python 3.11.9 установлен"
-
-        # Обновляем PATH
+        OK "Python 3.11.9 installed"
         $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" +
                     [System.Environment]::GetEnvironmentVariable("Path","User")
         $python = "python"
     } else {
-        ERR "Не удалось скачать Python. Проверь интернет."
-        Read-Host "Нажми Enter для выхода"
+        ERR "Failed to download Python. Check your internet connection."
+        Read-Host "Press Enter to exit"
         exit 1
     }
 }
 
-# Обновляем pip
-Log "Обновляю pip..."
+Log "Upgrading pip..."
 & $python -m pip install --upgrade pip --quiet
 
-# ─────────────────────────────────────────────────────────────
+# ----------------------------------------------------------
 # 3. OLLAMA
-# ─────────────────────────────────────────────────────────────
-STEP "Шаг 3/7 — Ollama (локальный AI)"
+# ----------------------------------------------------------
+STEP "Step 3/7 - Ollama (local AI)"
 
 $ollamaInstalled = $null -ne (Get-Command ollama -ErrorAction SilentlyContinue)
 
 if ($ollamaInstalled) {
-    OK "Ollama уже установлен"
+    OK "Ollama already installed"
 } else {
-    WARN "Ollama не найден — скачиваю..."
+    WARN "Ollama not found - downloading..."
     $ollamaUrl  = "https://ollama.com/download/OllamaSetup.exe"
     $ollamaPath = "$TOOLS_DIR\OllamaSetup.exe"
     Download $ollamaUrl $ollamaPath
 
     if (Test-Path $ollamaPath) {
-        Log "Устанавливаю Ollama..."
+        Log "Installing Ollama..."
         Start-Process $ollamaPath -ArgumentList "/S" -Wait
         $env:Path += ";$env:LOCALAPPDATA\Programs\Ollama"
-        OK "Ollama установлен"
+        OK "Ollama installed"
     } else {
-        ERR "Не удалось скачать Ollama"
+        ERR "Failed to download Ollama"
     }
 }
 
-# Запускаем Ollama сервер в фоне
-Log "Запускаю Ollama сервер..."
-$ollamaRunning = $false
+Log "Starting Ollama server..."
 try {
     $resp = Invoke-WebRequest "http://localhost:11434" -UseBasicParsing -TimeoutSec 3
-    $ollamaRunning = $true
-    OK "Ollama сервер уже запущен"
+    OK "Ollama server already running"
 } catch {
     Start-Process "ollama" -ArgumentList "serve" -WindowStyle Hidden
     Start-Sleep -Seconds 4
-    OK "Ollama сервер запущен"
+    OK "Ollama server started"
 }
 
-# ─────────────────────────────────────────────────────────────
-# 4. СКАЧИВАЕМ AI МОДЕЛИ
-# ─────────────────────────────────────────────────────────────
-STEP "Шаг 4/7 — AI модели (это займёт время, зависит от скорости интернета)"
+# ----------------------------------------------------------
+# 4. AI MODELS
+# ----------------------------------------------------------
+STEP "Step 4/7 - AI models (this may take a while depending on your internet speed)"
 
 function Pull-Model($model, $desc) {
-    Log "Скачиваю $model ($desc)..."
-    Write-Host "    Прогресс скачивания $model — смотри строку выше в окне..." -ForegroundColor Gray
+    Log "Downloading $model ($desc)..."
     & ollama pull $model
-    if ($LASTEXITCODE -eq 0) {
-        OK "$model готов"
-    } else {
-        WARN "$model — возможно уже скачан или ошибка сети"
-    }
+    if ($LASTEXITCODE -eq 0) { OK "$model ready" }
+    else { WARN "$model - may already exist or network error" }
 }
 
-Pull-Model "qwen2.5:7b"  "главная модель для понимания команд (~4.7GB)"
-Pull-Model "llava:7b"    "vision модель для анализа изображений (~4.5GB)"
+Pull-Model "qwen2.5:7b" "main command model (~4.7GB)"
+Pull-Model "llava:7b"   "vision model for image analysis (~4.5GB)"
 
-# ─────────────────────────────────────────────────────────────
+# ----------------------------------------------------------
 # 5. TESSERACT OCR
-# ─────────────────────────────────────────────────────────────
-STEP "Шаг 5/7 — Tesseract OCR (чтение текста на экране)"
+# ----------------------------------------------------------
+STEP "Step 5/7 - Tesseract OCR (reads text on screen)"
 
 $tesseractPath = "C:\Program Files\Tesseract-OCR\tesseract.exe"
-$tesseractInstalled = Test-Path $tesseractPath
 
-if ($tesseractInstalled) {
-    OK "Tesseract уже установлен"
+if (Test-Path $tesseractPath) {
+    OK "Tesseract already installed"
 } else {
-    WARN "Tesseract не найден — скачиваю..."
+    WARN "Tesseract not found - downloading..."
     $tessUrl  = "https://github.com/UB-Mannheim/tesseract/releases/download/v5.3.3.20231005/tesseract-ocr-w64-setup-5.3.3.20231005.exe"
     $tessPath = "$TOOLS_DIR\tesseract-setup.exe"
     Download $tessUrl $tessPath
 
     if (Test-Path $tessPath) {
-        Log "Устанавливаю Tesseract OCR..."
+        Log "Installing Tesseract OCR..."
         Start-Process $tessPath -ArgumentList "/S" -Wait
-        OK "Tesseract установлен"
+        OK "Tesseract installed"
     } else {
-        WARN "Не удалось скачать Tesseract — OCR будет отключён (ассистент продолжит работу)"
+        WARN "Could not download Tesseract - OCR disabled (assistant will still work)"
     }
 }
 
-# Добавляем в PATH
 $tessDir = "C:\Program Files\Tesseract-OCR"
 if ((Test-Path $tessDir) -and ($env:Path -notlike "*Tesseract*")) {
     $env:Path += ";$tessDir"
     [Environment]::SetEnvironmentVariable("Path", $env:Path, "User")
 }
 
-# ─────────────────────────────────────────────────────────────
-# 6. PYTHON ПАКЕТЫ
-# ─────────────────────────────────────────────────────────────
-STEP "Шаг 6/7 — Python библиотеки"
+# ----------------------------------------------------------
+# 6. PYTHON PACKAGES
+# ----------------------------------------------------------
+STEP "Step 6/7 - Python packages"
 
 $packages = @(
-    # UI
-    @{ name="PyQt6";               desc="Интерфейс ассистента" },
-    @{ name="PyQt6-Qt6";           desc="Qt6 runtime" },
-    # AI
-    @{ name="ollama";              desc="Ollama Python клиент" },
-    @{ name="openai-whisper";      desc="Распознавание голоса" },
-    # Vision
-    @{ name="opencv-python";       desc="Компьютерное зрение" },
-    @{ name="pytesseract";         desc="OCR — чтение текста" },
-    @{ name="Pillow";              desc="Работа с изображениями" },
-    @{ name="mss";                 desc="Скриншоты экрана" },
-    # Automation
-    @{ name="pyautogui";           desc="Управление мышью/клавиатурой" },
-    @{ name="pywin32";             desc="Windows API" },
-    @{ name="comtypes";            desc="UI Automation" },
-    @{ name="pynput";              desc="Наблюдение за вводом" },
-    # Memory
-    @{ name="chromadb";            desc="Векторная база данных" },
-    @{ name="sentence-transformers"; desc="Семантический поиск" },
-    # Autonomous
-    @{ name="yt-dlp";              desc="Скачивание YouTube видео" },
-    @{ name="sounddevice";         desc="Запись микрофона" },
-    @{ name="soundfile";           desc="Аудио файлы" },
-    @{ name="requests";            desc="HTTP запросы (веб-поиск)" },
-    # Core
-    @{ name="numpy";               desc="Математика" },
-    @{ name="pydantic";            desc="Валидация данных" },
-    @{ name="pydantic-settings";   desc="Настройки" },
-    @{ name="loguru";              desc="Логирование" },
-    @{ name="python-dotenv";       desc="Конфигурация" }
+    @{ name="PyQt6";                 desc="UI framework" },
+    @{ name="PyQt6-Qt6";             desc="Qt6 runtime" },
+    @{ name="ollama";                desc="Ollama Python client" },
+    @{ name="openai-whisper";        desc="Voice recognition" },
+    @{ name="opencv-python";         desc="Computer vision" },
+    @{ name="pytesseract";           desc="OCR - text reading" },
+    @{ name="Pillow";                desc="Image processing" },
+    @{ name="mss";                   desc="Screen capture" },
+    @{ name="pyautogui";             desc="Mouse/keyboard control" },
+    @{ name="pywin32";               desc="Windows API" },
+    @{ name="comtypes";              desc="UI Automation" },
+    @{ name="pynput";                desc="Input monitoring" },
+    @{ name="chromadb";              desc="Vector database" },
+    @{ name="sentence-transformers"; desc="Semantic search" },
+    @{ name="yt-dlp";                desc="YouTube video download" },
+    @{ name="sounddevice";           desc="Microphone recording" },
+    @{ name="soundfile";             desc="Audio files" },
+    @{ name="requests";              desc="HTTP requests" },
+    @{ name="numpy";                 desc="Math library" },
+    @{ name="pydantic";              desc="Data validation" },
+    @{ name="pydantic-settings";     desc="Settings management" },
+    @{ name="loguru";                desc="Logging" },
+    @{ name="python-dotenv";         desc="Configuration" }
 )
 
 $total = $packages.Count
 $i = 0
 foreach ($pkg in $packages) {
     $i++
-    $percent = [math]::Round(($i / $total) * 100)
     Write-Host "  [$i/$total] $($pkg.desc) ($($pkg.name))..." -NoNewline
     $result = & $python -m pip install $pkg.name --quiet 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host " OK" -ForegroundColor Green
-    } else {
-        Write-Host " WARN" -ForegroundColor Yellow
-    }
+    if ($LASTEXITCODE -eq 0) { Write-Host " OK" -ForegroundColor Green }
+    else { Write-Host " WARN" -ForegroundColor Yellow }
 }
 
-OK "Все Python пакеты установлены"
+OK "All Python packages installed"
 
-# ─────────────────────────────────────────────────────────────
-# 7. СОЗДАЁМ ЯРЛЫК НА РАБОЧЕМ СТОЛЕ
-# ─────────────────────────────────────────────────────────────
-STEP "Шаг 7/7 — Финальная настройка"
+# ----------------------------------------------------------
+# 7. FINALIZE
+# ----------------------------------------------------------
+STEP "Step 7/7 - Final setup"
 
-$desktopPath = [Environment]::GetFolderPath("Desktop")
+$desktopPath  = [Environment]::GetFolderPath("Desktop")
 $shortcutPath = "$desktopPath\UE5 AI Assistant.lnk"
 
 try {
     $shell = New-Object -ComObject WScript.Shell
-    $shortcut = $shell.CreateShortcut($shortcutPath)
-    $shortcut.TargetPath  = "cmd.exe"
-    $shortcut.Arguments   = "/c `"$SCRIPT_DIR\run.bat`""
-    $shortcut.WorkingDirectory = $SCRIPT_DIR
-    $shortcut.Description = "UE5 AI Assistant"
-    $shortcut.WindowStyle = 1
-    $shortcut.Save()
-    OK "Ярлык создан на рабочем столе"
+    $sc = $shell.CreateShortcut($shortcutPath)
+    $sc.TargetPath       = "cmd.exe"
+    $sc.Arguments        = "/c `"$SCRIPT_DIR\run.bat`""
+    $sc.WorkingDirectory = $SCRIPT_DIR
+    $sc.Description      = "UE5 AI Assistant"
+    $sc.WindowStyle      = 1
+    $sc.Save()
+    OK "Desktop shortcut created"
 } catch {
-    WARN "Не удалось создать ярлык (не критично)"
+    WARN "Could not create shortcut (not critical)"
 }
 
-# Записываем путь Tesseract в .env если его там нет
 $envFile = "$SCRIPT_DIR\.env"
 if ((Test-Path $envFile) -and (Get-Content $envFile -Raw) -notlike "*TESSERACT*") {
     Add-Content $envFile "`nTESSERACT_CMD=C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
 }
 
-# ─────────────────────────────────────────────────────────────
-# ИТОГ
-# ─────────────────────────────────────────────────────────────
-Write-Host @"
+Write-Host "
+  ==========================================
+    SETUP COMPLETE!
 
-╔══════════════════════════════════════════════════════╗
-║          УСТАНОВКА ЗАВЕРШЕНА УСПЕШНО!                ║
-║                                                      ║
-║  Для запуска:                                        ║
-║    • Двойной клик на ярлык "UE5 AI Assistant"        ║
-║      на рабочем столе                                ║
-║    • ИЛИ запусти run.bat в папке проекта             ║
-║                                                      ║
-║  Перед запуском:                                     ║
-║    1. Открой Unreal Engine 5                         ║
-║    2. Запусти ассистента                             ║
-║    3. Пиши или говори что нужно сделать              ║
-╚══════════════════════════════════════════════════════╝
+    To launch:
+      - Double-click 'UE5 AI Assistant' on Desktop
+      - OR run run.bat in the project folder
 
-"@ -ForegroundColor Green
+    Before starting:
+      1. Open Unreal Engine 5
+      2. Launch the assistant
+      3. Type or speak your commands
+  ==========================================
+" -ForegroundColor Green
 
-Log "=== Установка завершена ==="
+Log "=== Setup complete ==="
 
-# Спрашиваем запустить ли сразу
-Write-Host "Запустить ассистента сейчас? Нажми Enter или закрой окно..." -ForegroundColor Yellow
+Write-Host "Launch assistant now? Press Enter or close window..." -ForegroundColor Yellow
 $null = Read-Host
 
-# Запускаем
 Set-Location $SCRIPT_DIR
 & $python main.py
