@@ -1,10 +1,17 @@
 @echo off
-chcp 65001 >nul
-echo Запуск UE5 AI Assistant...
+title UE5 AI Assistant
+
+echo.
+echo  Starting UE5 AI Assistant...
+echo.
+
 cd /d "%~dp0"
+
 python main.py
+
 if errorlevel 1 (
     echo.
-    echo [ОШИБКА] Ассистент завершился с ошибкой.
+    echo  [ERROR] Failed to start. Check that Python is installed.
+    echo.
     pause
 )
