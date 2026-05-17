@@ -79,7 +79,12 @@ class Orchestrator:
         if special is not None:
             return special
 
-        # Мгновенные ответы без LLM
+        # Прямые команды — выполняем сразу без LLM
+        direct = self._handle_direct_commands(text)
+        if direct:
+            return direct
+
+        # Статус UE5 — отвечаем сразу
         ue5_status = self._handle_ue5_status_question(text)
         if ue5_status:
             return ue5_status
@@ -295,14 +300,62 @@ class Orchestrator:
         for pat in quick_patterns:
             if t.startswith(pat) or f" {pat}" in t or t == pat.strip():
                 return True
-        # Очень короткие фразы (1-2 слова) без UE5 терминов
-        ue5_terms = ["blueprint", "material", "widget", "fbx", "mesh", "texture",
-                     "actor", "level", "project", "pie", "compile", "папк", "создай",
-                     "import", "open", "save", "блюпринт", "матери", "unreal", "ue5"]
-        words = t.split()
-        if len(words) <= 2 and not any(term in t for term in ue5_terms):
-            return True
         return False
+
+    def _handle_direct_commands(self, text: str):
+        """
+        Прямые команды без LLM — мгновенное выполнение.
+        Запуск UE5, сохранение, PIE, папки и т.д.
+        """
+        t = text.lower().strip()
+
+        # ── ЗАПУСК UE5 ───────────────────────────────────────
+        launch_triggers = [
+            "запусти ue5", "запусти unreal", "запустить ue5",
+            "открой ue5", "открой unreal", "старт ue5",
+            "launch ue5", "open ue5", "start ue5",
+            "запусти редактор", "запусти движок",
+            "мне надо что бы ты запустил", "запусти его",
+            "нужно запустить ue", "запусти анрил",
+            "запусти унреал",
+        ]
+        if any(t == tr or t.startswith(tr) or tr in t for tr in launch_triggers):
+            if self.ui_detector.is_ue5_open():
+                msg = "✅ UE5 уже запущен!"
+                self._emit_status("idle", msg)
+                return CommandResult(success=True, message=msg)
+            self._emit_status("thinking", "🚀 Запускаю Unreal Engine 5...")
+            from core.autonomous_setup import launch_ue5
+            launched = launch_ue5(lambda m: self._emit_status("thinking", m))
+            if launched:
+                msg = "⏳ UE5 запускается, подожди 30-60 секунд..."
+                self._emit_status("idle", msg)
+            else:
+                msg = "📥 Устанавливаю Epic Games Launcher на D:..."
+                self._emit_status("idle", msg)
+            self.context.add_assistant_message(msg)
+            return CommandResult(success=True, message=msg)
+
+        # ── СОХРАНИТЬ ПРОЕКТ ─────────────────────────────────
+        save_triggers = ["сохрани", "save all", "сохранить всё", "ctrl+s"]
+        if any(tr in t for tr in save_triggers) and self.ui_detector.is_ue5_open():
+            import pyautogui, time
+            pyautogui.hotkey("ctrl", "shift", "s")
+            time.sleep(0.5)
+            msg = "✅ Проект сохранён (Ctrl+Shift+S)"
+            self._emit_status("idle", msg)
+            return CommandResult(success=True, message=msg)
+
+        # ── PIE: ЗАПУСК ИГРЫ ─────────────────────────────────
+        play_triggers = ["запусти игру", "play", "запусти пие", "старт пие", "запусти пиай", "нажми плей"]
+        if any(tr in t for tr in play_triggers) and self.ui_detector.is_ue5_open():
+            import pyautogui, time
+            pyautogui.press("F5") if "stop" not in t else pyautogui.press("F8")
+            msg = "✅ PIE запущен (F5)"
+            self._emit_status("idle", msg)
+            return CommandResult(success=True, message=msg)
+
+        return None  # не прямая команда
 
     def _handle_ue5_status_question(self, text: str):
         """Мгновенный ответ на вопросы о статусе UE5 — без LLM."""

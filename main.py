@@ -59,11 +59,12 @@ def main():
             logger.warning("Ollama not ready — will retry on first LLM call")
             return
 
-        # Прогрев модели — первый запрос всегда медленный (загрузка в RAM)
+        # Прогрев только qwen — llava грузим по требованию, не держим в RAM
         try:
             logger.info("Warming up LLM model...")
             req.post("http://localhost:11434/api/generate",
-                     json={"model": "qwen2.5:7b", "prompt": "hi", "stream": False},
+                     json={"model": "qwen2.5:7b", "prompt": "hi", "stream": False,
+                           "keep_alive": "10m"},   # держать 10 мин, потом выгружать
                      timeout=90)
             logger.info("LLM model ready")
         except Exception as e:
