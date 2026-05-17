@@ -146,7 +146,8 @@ def main():
         message = data.get("message", "")
         icon.set_state(status)
         tray.set_state(status)
-        if status in ("idle", "error") and message:
+        # Показываем ВСЕ сообщения в чате — пользователь видит что происходит
+        if message:
             popup.add_message(message, is_user=False)
 
     _bridge.status_received.connect(_on_status_main)

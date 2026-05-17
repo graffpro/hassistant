@@ -84,6 +84,11 @@ class Orchestrator:
             intent = self.intent_parser.parse(text)
             bus.emit(Events.INTENT_PARSED, intent)
 
+            # 1b. Разговорный fallback — если намерение непонятно, отвечаем через LLM
+            if intent.action in (None, "unknown", "none") and \
+               str(intent.object_type).lower() in ("none", "null", "asset", ""):
+                return self._conversational_response(text)
+
             # 2. Нужен ли открытый UE5? Если нет — запускаем автономно
             if not self.ui_detector.is_ue5_open():
                 self._emit_status("thinking", "🔍 UE5 не открыт — пытаюсь запустить...")
@@ -103,6 +108,11 @@ class Orchestrator:
                         self._emit_status("idle", "⏳ UE5 запускается. Повтори команду через минуту.")
                         return CommandResult(success=False, message="UE5 still loading")
                 else:
+                    msg = ("❌ Unreal Engine 5 не найден на компьютере.\n"
+                           "Скачай: https://www.unrealengine.com/download\n"
+                           "После установки повтори команду.")
+                    self._emit_status("idle", msg)
+                    self.context.add_assistant_message(msg)
                     return CommandResult(success=False, message="UE5 not available")
 
             # 3. Ищем шаблон в встроенных workflows (быстро и без LLM)
@@ -266,6 +276,34 @@ class Orchestrator:
             ).start()
         else:
             self._emit_status("idle", "❌ Operation cancelled")
+
+    def _conversational_response(self, text: str) -> CommandResult:
+        """Разговорный ответ через LLM когда запрос не является UE5 командой."""
+        try:
+            self._emit_status("thinking", "💬 Думаю...")
+            messages = [
+                {"role": "system", "content": (
+                    "Ты — AI ассистент для Unreal Engine 5. Отвечай на русском, коротко и по делу. "
+                    "Ты умеешь: создавать Blueprint, Material, Widget, импортировать FBX, "
+                    "управлять Content Browser, запускать PIE, сохранять проект."
+                )},
+                {"role": "user", "content": text}
+            ]
+            resp = self.llm.chat(messages)
+            response = resp.content if hasattr(resp, "content") else str(resp)
+            msg = response.strip() if response else (
+                "Я UE5 ассистент! Скажи что сделать — например:\n"
+                "• 'Создай Blueprint GameMode'\n"
+                "• 'Открой Content Browser'\n"
+                "• 'Запусти игру'"
+            )
+        except Exception as e:
+            logger.warning(f"Conversational LLM error: {e}")
+            msg = ("Привет! Я помогаю с Unreal Engine 5.\n"
+                   "Скажи что нужно сделать — создать Blueprint, импортировать файл, запустить PIE...")
+        self._emit_status("idle", msg)
+        self.context.add_assistant_message(msg)
+        return CommandResult(success=True, message=msg)
 
     def _emit_status(self, status: str, message: str):
         bus.emit(Events.STATUS_UPDATE, {"status": status, "message": message})

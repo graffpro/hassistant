@@ -1,9 +1,0 @@
-﻿__pycache__/
-*.pyc
-*.pyo
-*.pyd
-data/logs/
-data/memory/
-tools/
-setup_log.txt
-.env
