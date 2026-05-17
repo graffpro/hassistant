@@ -71,101 +71,64 @@ class Orchestrator:
         thread.start()
 
     def _process_command(self, text: str) -> CommandResult:
-        """Полный pipeline обработки команды."""
+        """Pipeline: сначала keyword-matching без LLM, потом LLM только для вопросов."""
         logger.info(f"Command: {text!r}")
 
-        # --- Спецкоманды ---
+        # 1. Спецкоманды (привет, помощь и т.д.)
         special = self._handle_special_commands(text)
         if special is not None:
             return special
 
-        # Прямые команды — выполняем сразу без LLM
+        # 2. Прямые команды — keyword matching, БЕЗ LLM
         direct = self._handle_direct_commands(text)
         if direct:
             return direct
 
-        # Статус UE5 — отвечаем сразу
+        # 3. Вопросы о статусе UE5 — без LLM
         ue5_status = self._handle_ue5_status_question(text)
         if ue5_status:
             return ue5_status
 
+        # 4. Очевидно разговорное — LLM для ответа
         if self._is_conversational_quick(text):
             return self._conversational_response(text)
 
-        self._emit_status("thinking", "⚙️ Анализирую...")
+        # 5. Всё остальное — тоже пробуем keyword matching расширенный
+        extended = self._handle_extended_commands(text)
+        if extended:
+            return extended
 
+        # 6. LLM только для КЛАССИФИКАЦИИ (возвращает JSON action, не текст)
+        self._emit_status("thinking", "")
+        classified = self._classify_intent_with_llm(text)
+        action = classified.get("action", "question")
+        name   = classified.get("name", "")
+        logger.info(f"LLM classified: action={action!r} name={name!r}")
+
+        # 7. Диспетчер: action → выполнение (никогда не генерируем текст на UE5 команду)
         try:
-            # 1. Парсинг намерения
-            intent = self.intent_parser.parse(text)
-            bus.emit(Events.INTENT_PARSED, intent)
-
-            # 1b. Если intent=run — это команда запуска, не разговор
-            if str(intent.action).lower() == "run":
-                direct = self._handle_direct_commands("запусти уе5")
-                if direct:
-                    return direct
-
-            # 1c. Разговорный fallback после парсинга
-            if self._is_conversational(text, intent):
-                return self._conversational_response(text)
-
-            # 2. Нужен ли открытый UE5? Если нет — запускаем автономно
-            if not self.ui_detector.is_ue5_open():
-                self._emit_status("thinking", "🔍 UE5 не открыт — пытаюсь запустить...")
-                from core.autonomous_setup import launch_ue5
-                launched = launch_ue5(
-                    lambda msg: self._emit_status("thinking", msg)
-                )
-                if launched:
-                    # Ждём пока UE5 загрузится (до 90 секунд)
-                    import time as _time
-                    for _ in range(18):
-                        _time.sleep(5)
-                        if self.ui_detector.is_ue5_open():
-                            self._emit_status("idle", "✅ UE5 запущен! Выполняю задачу...")
-                            break
-                    else:
-                        self._emit_status("idle", "⏳ UE5 запускается. Повтори команду через минуту.")
-                        return CommandResult(success=False, message="UE5 still loading")
-                else:
-                    # launch_ue5 уже показал статус и запустил скачивание в фоне
-                    return CommandResult(success=False, message="UE5 installing...")
-
-            # 3. Ищем шаблон в встроенных workflows (быстро и без LLM)
-            builtin = self._try_builtin_workflow(intent)
-
-            # 4. Ищем в памяти (обученные workflows)
-            cached = None if builtin else self.memory.find_workflow(intent)
-
-            # 5. Планирование
-            self._emit_status("planning", "Планирую шаги...")
-            if builtin:
-                plan = builtin
-            else:
-                plan = self.task_planner.plan(intent, cached)
-
-            bus.emit(Events.PLAN_READY, plan)
-            logger.info(f"Plan ready: {len(plan.steps)} steps")
-
-            # 6. Проверка безопасности
-            risk = self.validator.validate(plan)
-            if risk:
-                bus.emit(Events.CONFIRMATION_NEEDED, {
-                    "plan": plan,
-                    "reason": risk,
-                    "intent": intent,
-                })
-                return CommandResult(success=False, message=f"Ожидаю подтверждения: {risk}")
-
-            # 7. Выполнение
-            result = self._execute_plan(plan, intent)
-            return result
-
+            action_map = {
+                "launch_ue5":           lambda: self._handle_direct_commands("запусти уе5"),
+                "save_project":         lambda: self._handle_direct_commands("сохрани"),
+                "play_pie":             lambda: self._handle_direct_commands("запусти игру"),
+                "stop_pie":             lambda: self._do_stop_pie(),
+                "compile":              lambda: self._do_compile(),
+                "open_content_browser": lambda: self._do_open_cb(),
+                "create_blueprint":     lambda: self._quick_action("create_blueprint", name or "NewBlueprint"),
+                "create_material":      lambda: self._quick_action("create_material",  name or "NewMaterial"),
+                "create_widget":        lambda: self._quick_action("create_widget",     name or "NewWidget"),
+                "create_folder":        lambda: self._quick_action("create_folder",     name or "NewFolder"),
+                "import_fbx":           lambda: self._quick_action("import_fbx",        ""),
+            }
+            if action in action_map:
+                result = action_map[action]()
+                if result:
+                    return result
         except Exception as e:
-            logger.exception(f"Pipeline error: {e}")
-            msg = f"Ошибка: {e}"
-            self._emit_status("error", msg)
-            return CommandResult(success=False, message=msg)
+            logger.exception(f"Action dispatch error: {e}")
+
+        # 8. Только если action=="question" или dispatch не сработал — разговорный ответ
+        return self._conversational_response(text)
 
     def _execute_plan(self, plan: ActionPlan, intent) -> CommandResult:
         """Выполняет план шаг за шагом с валидацией."""
@@ -370,6 +333,203 @@ class Orchestrator:
             return CommandResult(success=True, message=msg)
 
         return None  # не прямая команда
+
+    # ─────────────────────────────────────────────────────────────
+    # РАСШИРЕННЫЕ KEYWORD КОМАНДЫ
+    # ─────────────────────────────────────────────────────────────
+
+    def _handle_extended_commands(self, text: str):
+        """
+        Второй слой keyword matching — Blueprint, Material, FBX, папки, compile и т.д.
+        Вызывается ДО LLM, чтобы LLM обрабатывал только настоящие вопросы.
+        """
+        t = text.lower().strip()
+
+        # ── СТОП PIE ────────────────────────────────────────────
+        stop_triggers = [
+            "останови игру", "стоп пие", "stop pie", "остановить игру",
+            "выйди из игры", "стоп игру", "выключи игру", "стоп плей",
+        ]
+        if any(tr in t for tr in stop_triggers) and self.ui_detector.is_ue5_open():
+            return self._do_stop_pie()
+
+        # ── COMPILE ──────────────────────────────────────────────
+        compile_triggers = [
+            "скомпилируй", "compile", "скомпилировать", "нажми компайл",
+            "скомпилируй блюпринт", "compile blueprint",
+        ]
+        if any(tr in t for tr in compile_triggers) and self.ui_detector.is_ue5_open():
+            return self._do_compile()
+
+        # ── CONTENT BROWSER ──────────────────────────────────────
+        cb_triggers = [
+            "открой контент", "content browser", "контент браузер",
+            "открой контент браузер", "покажи контент", "открой браузер ресурсов",
+        ]
+        if any(tr in t for tr in cb_triggers) and self.ui_detector.is_ue5_open():
+            return self._do_open_cb()
+
+        # ── CREATE BLUEPRINT ─────────────────────────────────────
+        bp_triggers = [
+            "создай blueprint", "создай блюпринт", "новый blueprint",
+            "новый блюпринт", "создать blueprint", "создать блюпринт",
+            "create blueprint", "создай bp", "новый бп",
+        ]
+        if any(tr in t for tr in bp_triggers):
+            name = self._extract_name(text, bp_triggers) or "NewBlueprint"
+            return self._quick_action_checked("create_blueprint", name)
+
+        # ── CREATE MATERIAL ──────────────────────────────────────
+        mat_triggers = [
+            "создай material", "создай материал", "новый material",
+            "новый материал", "создать материал", "create material",
+        ]
+        if any(tr in t for tr in mat_triggers):
+            name = self._extract_name(text, mat_triggers) or "NewMaterial"
+            return self._quick_action_checked("create_material", name)
+
+        # ── CREATE WIDGET ────────────────────────────────────────
+        wgt_triggers = [
+            "создай widget", "создай виджет", "новый widget",
+            "новый виджет", "создать виджет", "create widget",
+        ]
+        if any(tr in t for tr in wgt_triggers):
+            name = self._extract_name(text, wgt_triggers) or "NewWidget"
+            return self._quick_action_checked("create_widget", name)
+
+        # ── CREATE FOLDER ─────────────────────────────────────────
+        folder_triggers = [
+            "создай папку", "новая папка", "создать папку",
+            "create folder", "новый folder", "сделай папку",
+        ]
+        if any(tr in t for tr in folder_triggers):
+            name = self._extract_name(text, folder_triggers) or "NewFolder"
+            return self._quick_action_checked("create_folder", name)
+
+        # ── IMPORT FBX / FILE ────────────────────────────────────
+        import_triggers = [
+            "импортируй", "import fbx", "импорт fbx", "импортировать",
+            "import file", "добавь модель", "добавь fbx", "загрузи модель",
+        ]
+        if any(tr in t for tr in import_triggers):
+            return self._quick_action_checked("import_fbx", "")
+
+        return None
+
+    def _do_stop_pie(self) -> CommandResult:
+        import pyautogui
+        pyautogui.press("escape")
+        msg = "✅ PIE остановлен"
+        self._emit_status("idle", msg)
+        return CommandResult(success=True, message=msg)
+
+    def _do_compile(self) -> CommandResult:
+        import pyautogui
+        pyautogui.hotkey("ctrl", "shift", "f7")  # UE5 Compile All
+        import time; time.sleep(0.5)
+        msg = "✅ Компиляция запущена (Ctrl+Shift+F7)"
+        self._emit_status("idle", msg)
+        return CommandResult(success=True, message=msg)
+
+    def _do_open_cb(self) -> CommandResult:
+        import pyautogui
+        pyautogui.hotkey("ctrl", "space")
+        msg = "✅ Content Browser открыт"
+        self._emit_status("idle", msg)
+        return CommandResult(success=True, message=msg)
+
+    def _extract_name(self, text: str, triggers: list) -> str:
+        """Извлекает имя объекта из команды, убирая триггерную фразу."""
+        t = text.strip()
+        t_lower = t.lower()
+        for trigger in sorted(triggers, key=len, reverse=True):
+            idx = t_lower.find(trigger)
+            if idx >= 0:
+                after = t[idx + len(trigger):].strip()
+                if after:
+                    word = after.split()[0]
+                    # Убираем знаки препинания
+                    word = word.strip(".,!?;:")
+                    if len(word) > 1:
+                        return word[0].upper() + word[1:]
+        return ""
+
+    def _quick_action_checked(self, action_type: str, name: str) -> CommandResult:
+        """Выполняет UE5 действие, проверяя сначала что UE5 открыт."""
+        if not self.ui_detector.is_ue5_open():
+            msg = "❌ UE5 не открыт. Скажи 'запусти UE5' и я запущу его."
+            self._emit_status("idle", msg)
+            return CommandResult(success=False, message=msg)
+        return self._quick_action(action_type, name)
+
+    def _quick_action(self, action_type: str, name: str) -> CommandResult:
+        """Выполняет простое UE5 действие напрямую через action_executor."""
+        from brain.task_planner import ActionStep
+        self._emit_status("thinking", f"⚙️ Выполняю {action_type}...")
+        step = ActionStep(
+            step_id=1, action_type=action_type, target=name,
+            value=None, description=f"{action_type} {name}", timeout_ms=15000,
+        )
+        ok, err = self.action_executor.execute(step)
+        labels = {
+            "create_blueprint": f"✅ Blueprint '{name}' создан в Content Browser",
+            "create_material":  f"✅ Material '{name}' создан",
+            "create_widget":    f"✅ Widget '{name}' создан",
+            "create_folder":    f"✅ Папка '{name}' создана",
+            "import_fbx":       "✅ Открыт диалог импорта — выбери файл",
+        }
+        msg = labels.get(action_type, "✅ Готово!") if ok else f"❌ Ошибка: {err}"
+        self._emit_status("idle" if ok else "error", msg)
+        self.context.add_assistant_message(msg)
+        return CommandResult(success=ok, message=msg)
+
+    # ─────────────────────────────────────────────────────────────
+    # LLM КАК КЛАССИФИКАТОР (не генератор ответов!)
+    # ─────────────────────────────────────────────────────────────
+
+    def _classify_intent_with_llm(self, text: str) -> dict:
+        """
+        Главный принцип: LLM только определяет ЧТО хочет пользователь.
+        Возвращает JSON {action, name} — никогда не генерирует текстовый ответ.
+        Именно так работает Claude: понимаю смысл → выполняю действие.
+        """
+        prompt = (
+            f'Пользователь написал: "{text}"\n\n'
+            "Определи что он хочет. Верни ТОЛЬКО JSON без объяснений:\n"
+            '{"action": "<действие>", "name": "<имя или пусто>"}\n\n'
+            "Возможные действия:\n"
+            "- launch_ue5           — запустить/открыть Unreal Engine\n"
+            "- create_blueprint     — создать Blueprint\n"
+            "- create_material      — создать Material\n"
+            "- create_widget        — создать Widget\n"
+            "- create_folder        — создать папку\n"
+            "- import_fbx           — импортировать FBX/файл\n"
+            "- save_project         — сохранить проект\n"
+            "- play_pie             — запустить игру (Play In Editor)\n"
+            "- stop_pie             — остановить игру\n"
+            "- compile              — скомпилировать Blueprint\n"
+            "- open_content_browser — открыть Content Browser\n"
+            "- question             — вопрос или разговор (НЕ команда UE5)\n\n"
+            "Верни только JSON. Никаких объяснений."
+        )
+        default = {"action": "question", "name": ""}
+        try:
+            resp = self.llm.chat([
+                {"role": "system",
+                 "content": "Ты классификатор команд для Unreal Engine 5. "
+                            "Отвечай только JSON."},
+                {"role": "user", "content": prompt},
+            ])
+            content = resp.content if hasattr(resp, "content") else str(resp)
+            import json, re
+            m = re.search(r"\{[^}]+\}", content, re.DOTALL)
+            if m:
+                data = json.loads(m.group())
+                if "action" in data:
+                    return data
+        except Exception as e:
+            logger.warning(f"LLM classify error: {e}")
+        return default
 
     def _handle_ue5_status_question(self, text: str):
         """Мгновенный ответ на вопросы о статусе UE5 — без LLM."""
