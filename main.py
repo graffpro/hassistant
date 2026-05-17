@@ -39,6 +39,25 @@ def main():
 
     logger.info("Initializing modules...")
 
+    # ── Запускаем Ollama если не запущен ─────────────────────
+    def _ensure_ollama():
+        import subprocess, time
+        try:
+            import requests
+            requests.get("http://localhost:11434", timeout=3)
+            logger.info("Ollama already running")
+        except Exception:
+            logger.info("Starting Ollama server...")
+            try:
+                subprocess.Popen(["ollama", "serve"],
+                                 stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL)
+                time.sleep(3)
+                logger.info("Ollama server started")
+            except Exception as e:
+                logger.warning(f"Could not start Ollama: {e}")
+    threading.Thread(target=_ensure_ollama, daemon=True).start()
+
     memory          = MemoryManager()
     llm             = LLMClient()
     intent_parser   = IntentParser(llm)
@@ -128,25 +147,21 @@ def main():
     icon.show()
     tray.notify("UE5 AI Assistant", "Ассистент запущен. Нажми на иконку чтобы начать.")
 
-    # ── Авто-обновление (в фоне, через 5 сек после старта) ──
+    # ── Авто-обновление (в фоне, через 10 сек, тихо) ────────
     def check_updates():
-        def _status(msg):
-            # marshal to main thread
-            QTimer.singleShot(0, lambda m=msg: bus.emit(
-                Events.STATUS_UPDATE, {"status": "idle", "message": m}
-            ))
+        try:
+            def _on_available(version, notes):
+                QTimer.singleShot(0, lambda v=version, n=notes: tray.notify(
+                    f"Update available: {v}",
+                    f"{n[:80]}" if n else "Restart to install"
+                ))
+            updater = AutoUpdater(on_status=lambda m: None,   # silent
+                                  on_update_available=_on_available)
+            updater.check_and_update(silent=True)
+        except Exception as e:
+            logger.debug(f"Update check failed (non-critical): {e}")
 
-        def _on_available(version, notes):
-            # tray.notify must run in main thread
-            QTimer.singleShot(0, lambda v=version, n=notes: tray.notify(
-                f"Update available: {v}",
-                f"{n[:80]}" if n else "Restart to install"
-            ))
-
-        updater = AutoUpdater(on_status=_status, on_update_available=_on_available)
-        updater.check_and_update(silent=True)
-
-    QTimer.singleShot(5000, lambda: threading.Thread(
+    QTimer.singleShot(10000, lambda: threading.Thread(
         target=check_updates, daemon=True
     ).start())
 

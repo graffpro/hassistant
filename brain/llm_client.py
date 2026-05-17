@@ -70,7 +70,7 @@ class LLMClient:
             resp = requests.post(
                 f"{self.host}/api/chat",
                 json=payload,
-                timeout=60,
+                timeout=30,
             )
             resp.raise_for_status()
             data = resp.json()
@@ -100,7 +100,7 @@ class LLMClient:
                 f"{self.host}/api/chat",
                 json=payload,
                 stream=True,
-                timeout=60,
+                timeout=30,
             ) as resp:
                 for line in resp.iter_lines():
                     if line:

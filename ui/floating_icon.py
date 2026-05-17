@@ -362,6 +362,11 @@ class MiniChatPopup(QWidget):
     def toggle(self):
         if self.isVisible():
             self.hide()
+            # Reset state so next open is always compact/fresh
+            self._expanded = False
+            self._history_frame.setMaximumHeight(0)
+            self._sep.hide()
+            self.setFixedHeight(self.HEIGHT_COMPACT)
         else:
             self.show_near_icon()
 
