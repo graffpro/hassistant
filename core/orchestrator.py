@@ -61,6 +61,8 @@ class Orchestrator:
     def _on_user_message(self, text: str) -> None:
         """Вызывается при получении текстовой или голосовой команды."""
         self.context.add_user_message(text)
+        # Сразу показываем что сообщение получено
+        self._emit_status("thinking", "")
         thread = threading.Thread(
             target=self._process_command,
             args=(text,),
@@ -77,7 +79,11 @@ class Orchestrator:
         if special is not None:
             return special
 
-        # Сначала проверяем — разговорный ли запрос (без LLM, быстро)
+        # Мгновенные ответы без LLM
+        ue5_status = self._handle_ue5_status_question(text)
+        if ue5_status:
+            return ue5_status
+
         if self._is_conversational_quick(text):
             return self._conversational_response(text)
 
@@ -281,10 +287,10 @@ class Orchestrator:
         t = text.lower().strip()
         quick_patterns = [
             "как ты", "как дела", "что делаешь", "ты понял", "понял меня",
-            "что происходит", "кто ты", "что ты", "как ты", "ты умеешь",
-            "что умеешь", "привет", "hello", "hi ", "спасибо", "молодец",
+            "что происходит", "кто ты", "что ты", "ты умеешь",
+            "что умеешь", "привет", "hello", "спасибо", "молодец",
             "окей", "ладно", "хорошо", "понятно", "отлично", "супер",
-            "нуу", "нууу", "help", "помощь",
+            "нуу", "нууу", "помощь",
         ]
         for pat in quick_patterns:
             if t.startswith(pat) or f" {pat}" in t or t == pat.strip():
@@ -292,11 +298,33 @@ class Orchestrator:
         # Очень короткие фразы (1-2 слова) без UE5 терминов
         ue5_terms = ["blueprint", "material", "widget", "fbx", "mesh", "texture",
                      "actor", "level", "project", "pie", "compile", "папк", "создай",
-                     "import", "open", "save", "blueprint", "блюпринт", "матери"]
+                     "import", "open", "save", "блюпринт", "матери", "unreal", "ue5"]
         words = t.split()
         if len(words) <= 2 and not any(term in t for term in ue5_terms):
             return True
         return False
+
+    def _handle_ue5_status_question(self, text: str):
+        """Мгновенный ответ на вопросы о статусе UE5 — без LLM."""
+        t = text.lower()
+        status_keywords = [
+            "запущен", "открыт", "работает", "running", "open",
+            "унреал", "unreal", "ue5", "ue 5", "енджин", "engine"
+        ]
+        question_keywords = ["?", "запущен", "открыт", "работает", "есть"]
+        is_status_q = (
+            any(k in t for k in status_keywords) and
+            any(k in t for k in question_keywords)
+        )
+        if not is_status_q:
+            return None
+        if self.ui_detector.is_ue5_open():
+            msg = "✅ Да, Unreal Engine 5 запущен и готов к работе."
+        else:
+            msg = "❌ Unreal Engine 5 сейчас не запущен.\nСкажи 'запусти UE5' и я запущу его."
+        self._emit_status("idle", msg)
+        self.context.add_assistant_message(msg)
+        return CommandResult(success=True, message=msg)
 
     def _is_conversational(self, text: str, intent) -> bool:
         """True если запрос разговорный, а не UE5 команда."""

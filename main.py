@@ -146,9 +146,11 @@ def main():
         message = data.get("message", "")
         icon.set_state(status)
         tray.set_state(status)
-        # В чат — только финальные ответы (idle/error), не промежуточные статусы
+        # В чат — финальные ответы + "думаю" индикатор
         if status in ("idle", "error") and message:
             popup.add_message(message, is_user=False)
+        elif status == "thinking" and not message:
+            pass  # просто анимация иконки, без пузыря
 
     _bridge.status_received.connect(_on_status_main)
 
