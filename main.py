@@ -112,6 +112,16 @@ def main():
     # Теперь полный цикл: задача → память → Epic docs → выполнение → проверка → сохранение
     orchestrator.set_agent(agent)
 
+    # ── Output Log Monitor ───────────────────────────────────
+    from unreal.log_monitor import UE5LogMonitor, LogAutoFixer
+    auto_fixer = LogAutoFixer(
+        llm=llm, memory=memory,
+        researcher=web_researcher, orchestrator=orchestrator,
+    )
+    log_monitor = UE5LogMonitor(on_error=auto_fixer.on_error, poll_interval=2.0)
+    log_monitor.start()
+    logger.info("Output Log monitor active — watching for UE5 errors")
+
     # ── UI ───────────────────────────────────────────────────
     from ui.floating_icon import AssistantIcon, MiniChatPopup
     from ui.tray_manager import TrayManager
@@ -170,7 +180,7 @@ def main():
     # Трей → действия
     tray.show_chat.connect(popup.toggle)
     tray.show_main.connect(lambda: (get_full_window().show(), get_full_window().raise_()))
-    tray.quit_app.connect(lambda: (orchestrator.shutdown(), app.quit()))
+    tray.quit_app.connect(lambda: (orchestrator.shutdown(), log_monitor.stop(), app.quit()))
 
     # ── Показываем иконку ────────────────────────────────────
     icon.show()
