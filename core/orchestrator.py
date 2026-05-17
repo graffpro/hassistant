@@ -48,8 +48,12 @@ class Orchestrator:
 
         # Автономный агент — подключается позже через set_agent()
         self._agent = None
-        # Workflow рекордер — подключается позже через set_recorder()
+        # Workflow рекордер
         self._recorder = None
+        # Сканер проекта
+        self._scanner = None
+        # Blueprint генератор
+        self._bp_gen = None
 
         # Запускаем фоновый захват экрана
         self.screen_capture.start_continuous()
@@ -72,6 +76,16 @@ class Orchestrator:
         """Подключает Workflow рекордер."""
         self._recorder = recorder
         logger.info("Workflow recorder connected")
+
+    def set_scanner(self, scanner):
+        """Подключает сканер проекта."""
+        self._scanner = scanner
+        logger.info("Project scanner connected")
+
+    def set_blueprint_generator(self, generator):
+        """Подключает Blueprint генератор."""
+        self._bp_gen = generator
+        logger.info("Blueprint generator connected")
 
     def _on_user_message(self, text: str) -> None:
         """Вызывается при получении текстовой или голосовой команды."""
@@ -272,6 +286,37 @@ class Orchestrator:
                    "• Слушать голосовые команды (зажми Alt+V и говори)")
             self._emit_status("idle", msg)
             self.context.add_assistant_message(msg)
+            return CommandResult(success=True, message=msg)
+
+        # ── ВОПРОСЫ О ПРОЕКТЕ ────────────────────────────────
+        project_triggers = [
+            "что в проекте", "покажи проект", "что есть в проекте",
+            "сколько ассетов", "какие blueprint", "что создано",
+            "список ассетов", "мой проект",
+        ]
+        if any(tr in t for tr in project_triggers) and self._scanner:
+            info = self._scanner.project
+            if not info.name:
+                info = self._scanner.scan_now()
+            msg = info.summary() if info.name else "📂 Проект не найден. Открой UE5 и проект."
+            self._emit_status("idle", msg)
+            return CommandResult(success=True, message=msg)
+
+        # ── BLUEPRINT ПО ОПИСАНИЮ ────────────────────────────
+        bp_desc_triggers = [
+            "сделай чтобы", "добавь логику", "напиши blueprint",
+            "создай логику", "blueprint для", "блюпринт чтобы",
+            "запрограммируй", "сделай так чтобы",
+        ]
+        if any(tr in t for tr in bp_desc_triggers) and self._bp_gen:
+            msg = f"🔵 Генерирую Blueprint логику..."
+            self._emit_status("thinking", msg)
+            import threading as _th
+            _th.Thread(
+                target=self._bp_gen.generate_and_apply,
+                args=(text,),
+                daemon=True,
+            ).start()
             return CommandResult(success=True, message=msg)
 
         if any(w in t for w in ["список workflow", "что помнишь", "мои workflow"]):

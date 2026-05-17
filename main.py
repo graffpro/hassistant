@@ -43,7 +43,9 @@ def main():
     from brain.web_researcher import WebResearcher
     from brain.autonomous_agent import AutonomousAgent
     from brain.voice_input import VoiceInput
+    from brain.blueprint_generator import BlueprintGenerator
     from learning.workflow_recorder import WorkflowRecorder
+    from unreal.project_scanner import UE5ProjectScanner
     from core.updater import AutoUpdater
 
     logger.info("Initializing modules...")
@@ -126,6 +128,15 @@ def main():
     )
     orchestrator.set_recorder(recorder)
 
+    # ── Project Scanner ──────────────────────────────────────
+    scanner = UE5ProjectScanner()
+    scanner.start()
+    orchestrator.set_scanner(scanner)
+
+    # ── Blueprint Generator ───────────────────────────────────
+    bp_gen = BlueprintGenerator(llm=llm, orchestrator=orchestrator)
+    orchestrator.set_blueprint_generator(bp_gen)
+
     # ── Output Log Monitor ───────────────────────────────────
     from unreal.log_monitor import UE5LogMonitor, LogAutoFixer
     auto_fixer = LogAutoFixer(
@@ -196,9 +207,31 @@ def main():
     tray.show_main.connect(lambda: (get_full_window().show(), get_full_window().raise_()))
     tray.quit_app.connect(lambda: (orchestrator.shutdown(), log_monitor.stop(), app.quit()))
 
+    # ── Глобальные горячие клавиши ───────────────────────────
+    def _setup_hotkeys():
+        try:
+            import keyboard as kb
+            # Alt+Space → открыть/закрыть чат
+            kb.add_hotkey("alt+space", lambda: QTimer.singleShot(0, popup.toggle))
+            # Alt+R → начать/остановить запись workflow
+            def _toggle_record():
+                if recorder.is_recording():
+                    bus.emit(Events.USER_MESSAGE, "стоп запись")
+                else:
+                    bus.emit(Events.USER_MESSAGE, "начни запись")
+            kb.add_hotkey("alt+r", _toggle_record)
+            logger.info("Global hotkeys: Alt+Space (chat), Alt+R (record), Alt+V (voice)")
+        except ImportError:
+            logger.warning("keyboard not installed — global hotkeys disabled")
+        except Exception as e:
+            logger.warning(f"Hotkeys setup failed: {e}")
+
+    threading.Thread(target=_setup_hotkeys, daemon=True).start()
+
     # ── Показываем иконку ────────────────────────────────────
     icon.show()
-    tray.notify("UE5 AI Assistant", "Ассистент запущен. Нажми на иконку чтобы начать.")
+    tray.notify("UE5 AI Assistant",
+                "Ассистент запущен!\nAlt+Space — чат | Alt+V — голос | Alt+R — запись")
 
     # ── Авто-обновление (в фоне, через 10 сек, тихо) ────────
     def check_updates():
