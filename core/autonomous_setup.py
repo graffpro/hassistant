@@ -25,10 +25,12 @@ UE5_SEARCH_PATHS = [
 ]
 
 EPIC_LAUNCHER_PATHS = [
-    r"D:\Epic Games\Launcher\Portal\Binaries\Win32\EpicGamesLauncher.exe",
-    r"D:\Epic Games\Launcher\Portal\Binaries\Win64\EpicGamesLauncher.exe",
-    r"C:\Program Files (x86)\Epic Games\Launcher\Portal\Binaries\Win32\EpicGamesLauncher.exe",
+    r"C:\Program Files\Epic Games\Launcher\Portal\Binaries\Win64\EpicGamesLauncher.exe",
     r"C:\Program Files\Epic Games\Launcher\Portal\Binaries\Win32\EpicGamesLauncher.exe",
+    r"C:\Program Files (x86)\Epic Games\Launcher\Portal\Binaries\Win32\EpicGamesLauncher.exe",
+    r"C:\Program Files (x86)\Epic Games\Launcher\Portal\Binaries\Win64\EpicGamesLauncher.exe",
+    r"D:\Epic Games\Launcher\Portal\Binaries\Win64\EpicGamesLauncher.exe",
+    r"D:\Epic Games\Launcher\Portal\Binaries\Win32\EpicGamesLauncher.exe",
     r"C:\Program Files (x86)\Epic Games\Launcher\Engine\Binaries\Win64\EpicGamesLauncher.exe",
 ]
 
