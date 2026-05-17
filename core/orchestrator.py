@@ -77,14 +77,18 @@ class Orchestrator:
         if special is not None:
             return special
 
-        self._emit_status("thinking", "Анализирую задачу...")
+        # Сначала проверяем — разговорный ли запрос (без LLM, быстро)
+        if self._is_conversational_quick(text):
+            return self._conversational_response(text)
+
+        self._emit_status("thinking", "⚙️ Анализирую...")
 
         try:
             # 1. Парсинг намерения
             intent = self.intent_parser.parse(text)
             bus.emit(Events.INTENT_PARSED, intent)
 
-            # 1b. Разговорный fallback — если намерение непонятно или это явно разговор
+            # 1b. Разговорный fallback после парсинга
             if self._is_conversational(text, intent):
                 return self._conversational_response(text)
 
@@ -272,6 +276,28 @@ class Orchestrator:
         else:
             self._emit_status("idle", "❌ Operation cancelled")
 
+    def _is_conversational_quick(self, text: str) -> bool:
+        """Быстрая проверка без LLM — явно разговорные фразы."""
+        t = text.lower().strip()
+        quick_patterns = [
+            "как ты", "как дела", "что делаешь", "ты понял", "понял меня",
+            "что происходит", "кто ты", "что ты", "как ты", "ты умеешь",
+            "что умеешь", "привет", "hello", "hi ", "спасибо", "молодец",
+            "окей", "ладно", "хорошо", "понятно", "отлично", "супер",
+            "нуу", "нууу", "help", "помощь",
+        ]
+        for pat in quick_patterns:
+            if t.startswith(pat) or f" {pat}" in t or t == pat.strip():
+                return True
+        # Очень короткие фразы (1-2 слова) без UE5 терминов
+        ue5_terms = ["blueprint", "material", "widget", "fbx", "mesh", "texture",
+                     "actor", "level", "project", "pie", "compile", "папк", "создай",
+                     "import", "open", "save", "blueprint", "блюпринт", "матери"]
+        words = t.split()
+        if len(words) <= 2 and not any(term in t for term in ue5_terms):
+            return True
+        return False
+
     def _is_conversational(self, text: str, intent) -> bool:
         """True если запрос разговорный, а не UE5 команда."""
         t = text.lower().strip()
@@ -307,11 +333,8 @@ class Orchestrator:
         try:
             self._emit_status("thinking", "💬 Думаю...")
             messages = [
-                {"role": "system", "content": (
-                    "Ты — AI ассистент для Unreal Engine 5. Отвечай на русском, коротко и по делу. "
-                    "Ты умеешь: создавать Blueprint, Material, Widget, импортировать FBX, "
-                    "управлять Content Browser, запускать PIE, сохранять проект."
-                )},
+                {"role": "system", "content":
+                    "Ты UE5 ассистент. Отвечай коротко, 1-3 предложения, по-русски."},
                 {"role": "user", "content": text}
             ]
             resp = self.llm.chat(messages)
