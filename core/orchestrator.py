@@ -108,12 +108,8 @@ class Orchestrator:
                         self._emit_status("idle", "⏳ UE5 запускается. Повтори команду через минуту.")
                         return CommandResult(success=False, message="UE5 still loading")
                 else:
-                    msg = ("❌ Unreal Engine 5 не найден на компьютере.\n"
-                           "Скачай: https://www.unrealengine.com/download\n"
-                           "После установки повтори команду.")
-                    self._emit_status("idle", msg)
-                    self.context.add_assistant_message(msg)
-                    return CommandResult(success=False, message="UE5 not available")
+                    # launch_ue5 уже показал статус и запустил скачивание в фоне
+                    return CommandResult(success=False, message="UE5 installing...")
 
             # 3. Ищем шаблон в встроенных workflows (быстро и без LLM)
             builtin = self._try_builtin_workflow(intent)
