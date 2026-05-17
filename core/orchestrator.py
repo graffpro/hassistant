@@ -84,9 +84,8 @@ class Orchestrator:
             intent = self.intent_parser.parse(text)
             bus.emit(Events.INTENT_PARSED, intent)
 
-            # 1b. Разговорный fallback — если намерение непонятно, отвечаем через LLM
-            if intent.action in (None, "unknown", "none") and \
-               str(intent.object_type).lower() in ("none", "null", "asset", ""):
+            # 1b. Разговорный fallback — если намерение непонятно или это явно разговор
+            if self._is_conversational(text, intent):
                 return self._conversational_response(text)
 
             # 2. Нужен ли открытый UE5? Если нет — запускаем автономно
@@ -272,6 +271,36 @@ class Orchestrator:
             ).start()
         else:
             self._emit_status("idle", "❌ Operation cancelled")
+
+    def _is_conversational(self, text: str, intent) -> bool:
+        """True если запрос разговорный, а не UE5 команда."""
+        t = text.lower().strip()
+
+        # Явно разговорные паттерны
+        conversational_patterns = [
+            "что делаешь", "как дела", "ты понял", "понял меня",
+            "что происходит", "расскажи", "объясни", "кто ты",
+            "что ты", "как ты", "ты умеешь", "что умеешь",
+            "what are you", "who are you", "how are you",
+            "нуyyy", "нуу", "ладно", "окей", "хорошо",
+            "спасибо", "молодец", "отлично", "понятно",
+        ]
+        for pat in conversational_patterns:
+            if pat in t:
+                return True
+
+        # Очень короткие запросы без чёткого объекта
+        words = t.split()
+        if len(words) <= 3 and intent.object_name is None:
+            return True
+
+        # Непонятное намерение
+        action = str(intent.action).lower() if intent.action else "none"
+        obj = str(intent.object_type).lower() if intent.object_type else "none"
+        if action in ("none", "unknown", "null") and obj in ("none", "null", "asset", ""):
+            return True
+
+        return False
 
     def _conversational_response(self, text: str) -> CommandResult:
         """Разговорный ответ через LLM когда запрос не является UE5 командой."""
