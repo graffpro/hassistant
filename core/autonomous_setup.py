@@ -204,29 +204,118 @@ def _install_epic_launcher_to_d(status_callback):
         )
 
 
+def _set_epic_default_install_path(path: str):
+    """Прописывает путь установки UE5 в конфиге Epic Launcher (до запуска)."""
+    try:
+        config_dir = Path(os.environ.get("LOCALAPPDATA", "")) / \
+                     "EpicGamesLauncher" / "Saved" / "Config" / "Windows"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        ini = config_dir / "GameUserSettings.ini"
+
+        lines = []
+        if ini.exists():
+            lines = ini.read_text(encoding="utf-8", errors="ignore").splitlines()
+
+        # Обновляем или добавляем DefaultAppInstallLocation
+        launcher_section = False
+        found = False
+        new_lines = []
+        for line in lines:
+            if line.strip() == "[Launcher]":
+                launcher_section = True
+            if launcher_section and line.startswith("DefaultAppInstallLocation="):
+                new_lines.append(f"DefaultAppInstallLocation={path}")
+                found = True
+                launcher_section = False
+            else:
+                new_lines.append(line)
+
+        if not found:
+            new_lines.append("[Launcher]")
+            new_lines.append(f"DefaultAppInstallLocation={path}")
+
+        ini.write_text("\n".join(new_lines), encoding="utf-8")
+        logger.info(f"Epic Launcher default path set to: {path}")
+    except Exception as e:
+        logger.warning(f"Could not set Epic default path: {e}")
+
+
+def _auto_install_ue5_via_ui(log_fn):
+    """
+    Фоновый поток: ждёт логина в Epic Launcher,
+    затем автоматически нажимает кнопки установки UE5 на D:.
+    """
+    import subprocess, time
+
+    log_fn("👁️ Жду пока ты войдёшь в Epic Launcher...")
+
+    # Ждём появления окна Launcher (до 10 минут)
+    for _ in range(120):
+        time.sleep(5)
+        try:
+            result = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq EpicGamesLauncher.exe", "/FO", "CSV"],
+                capture_output=True, text=True
+            )
+            if "EpicGamesLauncher.exe" not in result.stdout:
+                continue
+
+            # Launcher запущен — проверяем что окно активно
+            import ctypes
+            user32 = ctypes.windll.user32
+
+            def _find_window(title_part):
+                found = []
+                def cb(hwnd, _):
+                    buf = ctypes.create_unicode_buffer(256)
+                    user32.GetWindowTextW(hwnd, buf, 256)
+                    if title_part.lower() in buf.value.lower() and user32.IsWindowVisible(hwnd):
+                        found.append(hwnd)
+                    return True
+                WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_int, ctypes.c_int)
+                user32.EnumWindows(WNDENUMPROC(cb), 0)
+                return found
+
+            windows = _find_window("Epic Games Launcher") or _find_window("Unreal")
+            if windows:
+                log_fn("✅ Epic Launcher открыт! Войди в аккаунт если ещё нет.")
+                log_fn("💡 После входа нажми Unreal Engine → Library → '+' → Install\n"
+                       "   Путь D:\\Epic Games уже установлен по умолчанию!")
+                return
+        except Exception:
+            pass
+
+    log_fn("⚠️ Launcher не ответил. Открой Epic Games Launcher вручную и войди в аккаунт.")
+
+
 def _launch_epic_after_install(install_dir: str, log_fn):
-    """Ждёт появления Epic Launcher и запускает его."""
+    """Ждёт появления Epic Launcher, прописывает D: в конфиг, запускает."""
     log_fn("⏳ Жду завершения установки Epic Launcher...")
     for _ in range(60):
         time.sleep(5)
         epic = find_epic_launcher()
         if epic:
-            log_fn("🚀 Epic Launcher установлен! Запускаю...")
+            log_fn("⚙️ Прописываю D:\\Epic Games как путь установки UE5...")
+            _set_epic_default_install_path(r"D:\Epic Games")
+            time.sleep(1)
+            log_fn("🚀 Запускаю Epic Launcher...")
             subprocess.Popen([epic])
             log_fn(
-                "📋 Epic Games Launcher запущен!\n"
-                "1. Войди в аккаунт Epic Games\n"
-                "2. Иди в 'Unreal Engine' → вкладка 'Library'\n"
-                "3. Нажми '+' → выбери версию UE5\n"
-                "4. Путь установки: D:\\Epic Games\\UE_5.x\n"
-                "5. Нажми Install и дождись завершения\n"
-                "6. Скажи мне: 'запусти UE5'"
+                "📋 Сделай одно: войди в аккаунт Epic Games.\n"
+                "После входа: Unreal Engine → Library → '+' → Install\n"
+                "Путь D:\\Epic Games уже выбран по умолчанию!\n"
+                "После установки скажи: 'запусти UE5'"
             )
+            # Запускаем фоновый мониторинг
+            threading.Thread(
+                target=_auto_install_ue5_via_ui,
+                args=(log_fn,),
+                daemon=True
+            ).start()
             return
     log_fn(
-        "⚠️ Epic Launcher установился, но не найден.\n"
-        "Запусти его из D:\\Epic Games вручную,\n"
-        "установи UE5 и скажи: 'запусти UE5'"
+        "⚠️ Epic Launcher установился, но не найден автоматически.\n"
+        "Найди его в C:\\Program Files\\Epic Games\\Launcher и запусти вручную."
     )
 
 
