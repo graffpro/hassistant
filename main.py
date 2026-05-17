@@ -4,11 +4,18 @@ UE5 AI Assistant — Entry Point
 import sys
 import threading
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, QObject, pyqtSignal
 
 from core.config import config
 from core.logger import setup_logger, logger
 from core.event_bus import bus, Events
+
+
+class _Bridge(QObject):
+    """Thread-safe bridge: worker threads emit signal → main thread handles it."""
+    status_received = pyqtSignal(dict)
+
+_bridge = _Bridge()
 
 
 def main():
@@ -126,16 +133,22 @@ def main():
         bus.emit(Events.USER_MESSAGE, text)
     popup.message_sent.connect(on_message)
 
-    # Ответ оркестратора → чат (всегда в главном потоке через QTimer)
+    # Ответ оркестратора → чат через Signal Bridge (единственный надёжный способ)
+    def _on_status_main(data: dict):
+        """Всегда выполняется в главном UI потоке благодаря QueuedConnection."""
+        status  = data.get("status", "idle")
+        message = data.get("message", "")
+        icon.set_state(status)
+        tray.set_state(status)
+        if status in ("idle", "error") and message:
+            popup.add_message(message, is_user=False)
+
+    _bridge.status_received.connect(_on_status_main)
+
     def on_status(data: dict):
-        def _update():
-            status  = data.get("status", "idle")
-            message = data.get("message", "")
-            icon.set_state(status)
-            tray.set_state(status)
-            if status in ("idle", "error") and message:
-                popup.add_message(message, is_user=False)
-        QTimer.singleShot(0, _update)
+        """Вызывается из любого потока — безопасно эмитит сигнал."""
+        _bridge.status_received.emit(data)
+
     bus.subscribe(Events.STATUS_UPDATE, on_status)
 
     # Трей → действия
