@@ -161,17 +161,30 @@ $tesseractPath = "C:\Program Files\Tesseract-OCR\tesseract.exe"
 if (Test-Path $tesseractPath) {
     OK "Tesseract already installed"
 } else {
-    WARN "Tesseract not found - downloading..."
-    $tessUrl  = "https://github.com/UB-Mannheim/tesseract/releases/download/v5.3.3.20231005/tesseract-ocr-w64-setup-5.3.3.20231005.exe"
-    $tessPath = "$TOOLS_DIR\tesseract-setup.exe"
-    Download $tessUrl $tessPath
+    WARN "Tesseract not found - installing via winget..."
+    $wingetTest = Get-Command winget -ErrorAction SilentlyContinue
+    $installed = $false
 
-    if (Test-Path $tessPath) {
-        Log "Installing Tesseract OCR..."
-        Start-Process $tessPath -ArgumentList "/S" -Wait
-        OK "Tesseract installed"
-    } else {
-        WARN "Could not download Tesseract - OCR disabled (assistant will still work)"
+    if ($wingetTest) {
+        winget install --id UB-Mannheim.TesseractOCR --silent --accept-source-agreements --accept-package-agreements 2>&1 | Out-Null
+        if (Test-Path $tesseractPath) { OK "Tesseract installed via winget"; $installed = $true }
+    }
+
+    if (-not $installed) {
+        Log "Trying direct download..."
+        $tessUrl  = "https://digi.bib.uni-mannheim.de/tesseract/tesseract-ocr-w64-setup-5.3.3.20231005.exe"
+        $tessPath2 = "$TOOLS_DIR\tesseract-setup.exe"
+        try {
+            Invoke-WebRequest -Uri $tessUrl -OutFile $tessPath2 -UseBasicParsing -TimeoutSec 60
+        } catch {}
+        if (Test-Path $tessPath2) {
+            Start-Process $tessPath2 -ArgumentList "/S" -Wait
+            if (Test-Path $tesseractPath) { OK "Tesseract installed"; $installed = $true }
+        }
+    }
+
+    if (-not $installed) {
+        WARN "Could not install Tesseract - OCR disabled (assistant will still work without it)"
     }
 }
 

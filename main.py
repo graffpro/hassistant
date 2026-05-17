@@ -4,7 +4,7 @@ UE5 AI Assistant — Entry Point
 import sys
 import threading
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import QTimer
 
 from core.config import config
 from core.logger import setup_logger, logger
@@ -18,8 +18,7 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName(config.app_name)
     app.setApplicationVersion(config.version)
-    app.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps)
-    app.setQuitOnLastWindowClosed(False)   # живём в трее
+    app.setQuitOnLastWindowClosed(False)
 
     # ── Modules ──────────────────────────────────────────────
     from memory.memory_manager import MemoryManager
