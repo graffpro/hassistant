@@ -107,14 +107,16 @@ def main():
         bus.emit(Events.USER_MESSAGE, text)
     popup.message_sent.connect(on_message)
 
-    # Ответ оркестратора → чат
+    # Ответ оркестратора → чат (всегда в главном потоке через QTimer)
     def on_status(data: dict):
-        status  = data.get("status", "idle")
-        message = data.get("message", "")
-        icon.set_state(status)
-        tray.set_state(status)
-        if status in ("idle", "error") and message:
-            popup.add_message(message, is_user=False)
+        def _update():
+            status  = data.get("status", "idle")
+            message = data.get("message", "")
+            icon.set_state(status)
+            tray.set_state(status)
+            if status in ("idle", "error") and message:
+                popup.add_message(message, is_user=False)
+        QTimer.singleShot(0, _update)
     bus.subscribe(Events.STATUS_UPDATE, on_status)
 
     # Трей → действия
@@ -129,13 +131,17 @@ def main():
     # ── Авто-обновление (в фоне, через 5 сек после старта) ──
     def check_updates():
         def _status(msg):
-            bus.emit(Events.STATUS_UPDATE, {"status": "idle", "message": msg})
+            # marshal to main thread
+            QTimer.singleShot(0, lambda m=msg: bus.emit(
+                Events.STATUS_UPDATE, {"status": "idle", "message": m}
+            ))
 
         def _on_available(version, notes):
-            tray.notify(
-                f"Доступно обновление {version}",
-                f"{notes[:80]}" if notes else "Нажми для установки"
-            )
+            # tray.notify must run in main thread
+            QTimer.singleShot(0, lambda v=version, n=notes: tray.notify(
+                f"Update available: {v}",
+                f"{n[:80]}" if n else "Restart to install"
+            ))
 
         updater = AutoUpdater(on_status=_status, on_update_available=_on_available)
         updater.check_and_update(silent=True)
