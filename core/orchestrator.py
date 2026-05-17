@@ -48,6 +48,8 @@ class Orchestrator:
 
         # Автономный агент — подключается позже через set_agent()
         self._agent = None
+        # Workflow рекордер — подключается позже через set_recorder()
+        self._recorder = None
 
         # Запускаем фоновый захват экрана
         self.screen_capture.start_continuous()
@@ -65,6 +67,11 @@ class Orchestrator:
         """Подключает автономный агент (вызывается из main.py после создания обоих)."""
         self._agent = agent
         logger.info("Autonomous agent connected to orchestrator")
+
+    def set_recorder(self, recorder):
+        """Подключает Workflow рекордер."""
+        self._recorder = recorder
+        logger.info("Workflow recorder connected")
 
     def _on_user_message(self, text: str) -> None:
         """Вызывается при получении текстовой или голосовой команды."""
@@ -228,14 +235,41 @@ class Orchestrator:
             self.context.add_assistant_message(msg)
             return CommandResult(success=True, message=msg)
 
+        # ── ЗАПИСЬ WORKFLOW ──────────────────────────────────
+        record_start = ["начни запись", "начать запись", "start recording",
+                        "запиши workflow", "запомни workflow", "записывай"]
+        record_stop  = ["стоп запись", "стоп записть", "stop recording",
+                        "остановить запись", "закончи запись", "хватит записывать"]
+
+        if any(tr in t for tr in record_start) and self._recorder:
+            # Извлекаем имя если есть: "начни запись CreateRoom"
+            name = ""
+            for tr in record_start:
+                idx = t.find(tr)
+                if idx >= 0:
+                    after = text[idx + len(tr):].strip()
+                    if after:
+                        name = after
+                    break
+            msg = self._recorder.start_recording(name)
+            self._emit_status("idle", msg)
+            return CommandResult(success=True, message=msg)
+
+        if any(tr in t for tr in record_stop) and self._recorder:
+            msg = self._recorder.stop_recording()
+            self._emit_status("idle", msg)
+            return CommandResult(success=True, message=msg)
+
         if any(w in t for w in ["что умеешь", "помощь", "help", "команды"]):
             msg = ("Я умею:\n"
                    "• Создавать Blueprint, Material, Widget, папки\n"
                    "• Импортировать FBX/текстуры\n"
                    "• Запускать/останавливать PIE\n"
-                   "• Сохранять проект\n"
-                   "• Компилировать Blueprint\n"
-                   "• Учиться на твоих действиях и запоминать workflows")
+                   "• Сохранять и компилировать проект\n"
+                   "• Автономно решать задачи (ищу в Epic docs, выполняю, запоминаю)\n"
+                   "• Исправлять ошибки из Output Log автоматически\n"
+                   "• Записывать твои действия → 'начни запись' / 'стоп запись'\n"
+                   "• Слушать голосовые команды (зажми Alt+V и говори)")
             self._emit_status("idle", msg)
             self.context.add_assistant_message(msg)
             return CommandResult(success=True, message=msg)

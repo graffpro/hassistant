@@ -42,6 +42,8 @@ def main():
     from learning.observer import WorkflowObserver
     from brain.web_researcher import WebResearcher
     from brain.autonomous_agent import AutonomousAgent
+    from brain.voice_input import VoiceInput
+    from learning.workflow_recorder import WorkflowRecorder
     from core.updater import AutoUpdater
 
     logger.info("Initializing modules...")
@@ -111,6 +113,18 @@ def main():
     # Подключаем агент к оркестратору.
     # Теперь полный цикл: задача → память → Epic docs → выполнение → проверка → сохранение
     orchestrator.set_agent(agent)
+
+    # ── Voice Input (Push-to-Talk Alt+V) ────────────────────
+    voice = VoiceInput(on_transcribed=lambda text: bus.emit(Events.USER_MESSAGE, text))
+    threading.Thread(target=VoiceInput.install_dependencies, daemon=True).start()
+    voice.start_ptt()
+
+    # ── Workflow Recorder ────────────────────────────────────
+    recorder = WorkflowRecorder(
+        llm=llm, memory=memory,
+        ui_detector=ui_detector, screen_capture=screen_capture,
+    )
+    orchestrator.set_recorder(recorder)
 
     # ── Output Log Monitor ───────────────────────────────────
     from unreal.log_monitor import UE5LogMonitor, LogAutoFixer
