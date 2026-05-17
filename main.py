@@ -46,23 +46,19 @@ def main():
 
     logger.info("Initializing modules...")
 
-    # ── Запускаем Ollama и прогреваем модель ─────────────────
+    # ── Запускаем Ollama автономно (устанавливает если нет) ──
     def _ensure_ollama():
-        import subprocess, time, requests as req
-        try:
-            req.get("http://localhost:11434", timeout=3)
-            logger.info("Ollama already running")
-        except Exception:
-            logger.info("Starting Ollama server...")
-            try:
-                subprocess.Popen(["ollama", "serve"],
-                                 stdout=subprocess.DEVNULL,
-                                 stderr=subprocess.DEVNULL)
-                time.sleep(4)
-                logger.info("Ollama server started")
-            except Exception as e:
-                logger.warning(f"Could not start Ollama: {e}")
-                return
+        from core.autonomous_setup import ensure_ollama_running
+        import requests as req
+
+        def _status(msg):
+            logger.info(msg)
+
+        ok = ensure_ollama_running(status_callback=_status)
+        if not ok:
+            logger.warning("Ollama not ready — will retry on first LLM call")
+            return
+
         # Прогрев модели — первый запрос всегда медленный (загрузка в RAM)
         try:
             logger.info("Warming up LLM model...")
@@ -72,6 +68,7 @@ def main():
             logger.info("LLM model ready")
         except Exception as e:
             logger.warning(f"Model warmup failed (will load on first use): {e}")
+
     threading.Thread(target=_ensure_ollama, daemon=True).start()
 
     memory          = MemoryManager()

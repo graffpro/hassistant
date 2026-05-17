@@ -84,12 +84,26 @@ class Orchestrator:
             intent = self.intent_parser.parse(text)
             bus.emit(Events.INTENT_PARSED, intent)
 
-            # 2. Нужен ли открытый UE5?
+            # 2. Нужен ли открытый UE5? Если нет — запускаем автономно
             if not self.ui_detector.is_ue5_open():
-                msg = "⚠️ Unreal Engine не запущен. Открой UE5 и попробуй снова."
-                self._emit_status("error", msg)
-                self.context.add_assistant_message(msg)
-                return CommandResult(success=False, message=msg)
+                self._emit_status("thinking", "🔍 UE5 не открыт — пытаюсь запустить...")
+                from core.autonomous_setup import launch_ue5
+                launched = launch_ue5(
+                    lambda msg: self._emit_status("thinking", msg)
+                )
+                if launched:
+                    # Ждём пока UE5 загрузится (до 90 секунд)
+                    import time as _time
+                    for _ in range(18):
+                        _time.sleep(5)
+                        if self.ui_detector.is_ue5_open():
+                            self._emit_status("idle", "✅ UE5 запущен! Выполняю задачу...")
+                            break
+                    else:
+                        self._emit_status("idle", "⏳ UE5 запускается. Повтори команду через минуту.")
+                        return CommandResult(success=False, message="UE5 still loading")
+                else:
+                    return CommandResult(success=False, message="UE5 not available")
 
             # 3. Ищем шаблон в встроенных workflows (быстро и без LLM)
             builtin = self._try_builtin_workflow(intent)
