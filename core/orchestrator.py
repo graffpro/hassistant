@@ -46,6 +46,9 @@ class Orchestrator:
         from brain.context_manager import ContextManager
         self.context = ContextManager()
 
+        # Автономный агент — подключается позже через set_agent()
+        self._agent = None
+
         # Запускаем фоновый захват экрана
         self.screen_capture.start_continuous()
 
@@ -57,6 +60,11 @@ class Orchestrator:
         bus.subscribe(Events.CONFIRMATION_NEEDED, self._on_confirmation_needed)
 
         logger.info("Orchestrator ready")
+
+    def set_agent(self, agent):
+        """Подключает автономный агент (вызывается из main.py после создания обоих)."""
+        self._agent = agent
+        logger.info("Autonomous agent connected to orchestrator")
 
     def _on_user_message(self, text: str) -> None:
         """Вызывается при получении текстовой или голосовой команды."""
@@ -127,8 +135,25 @@ class Orchestrator:
         except Exception as e:
             logger.exception(f"Action dispatch error: {e}")
 
-        # 8. Только если action=="question" или dispatch не сработал — разговорный ответ
+        # 8. Сложная UE5 задача → автономный агент
+        #    (ищет решение, выполняет, проверяет, запоминает)
+        if action != "question" and self._agent:
+            return self._run_autonomous(text)
+
+        # 9. Разговорный вопрос → короткий ответ
         return self._conversational_response(text)
+
+    def _run_autonomous(self, goal: str) -> CommandResult:
+        """
+        Запускает автономный агент для сложной задачи:
+        память → Epic docs → выполнение → визуальная проверка → сохранение.
+        """
+        msg = f"🤖 Работаю автономно: {goal[:60]}..."
+        self._emit_status("thinking", msg)
+        self.context.add_assistant_message(msg)
+        # Агент работает в своём потоке, статусы идут через event bus → чат
+        self._agent.run_goal(goal)
+        return CommandResult(success=True, message=msg)
 
     def _execute_plan(self, plan: ActionPlan, intent) -> CommandResult:
         """Выполняет план шаг за шагом с валидацией."""

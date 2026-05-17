@@ -108,6 +108,9 @@ def main():
         video_processor=video_processor, web_researcher=web_researcher,
         screen_capture=screen_capture, ui_detector=ui_detector, memory=memory,
     )
+    # Подключаем агент к оркестратору.
+    # Теперь полный цикл: задача → память → Epic docs → выполнение → проверка → сохранение
+    orchestrator.set_agent(agent)
 
     # ── UI ───────────────────────────────────────────────────
     from ui.floating_icon import AssistantIcon, MiniChatPopup
@@ -147,11 +150,14 @@ def main():
         message = data.get("message", "")
         icon.set_state(status)
         tray.set_state(status)
-        # В чат — финальные ответы + "думаю" индикатор
+        # В чат — все значимые сообщения агента + финальные ответы
+        agent_statuses = ("researching", "executing", "learning", "verifying", "planning")
         if status in ("idle", "error") and message:
             popup.add_message(message, is_user=False)
-        elif status == "thinking" and not message:
-            pass  # просто анимация иконки, без пузыря
+        elif status in agent_statuses and message:
+            popup.add_message(message, is_user=False)
+        elif status == "thinking" and message:
+            popup.add_message(message, is_user=False)
 
     _bridge.status_received.connect(_on_status_main)
 
