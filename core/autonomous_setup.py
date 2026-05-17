@@ -82,12 +82,10 @@ def find_epic_launcher() -> str | None:
     return None
 
 
-def launch_ue5(status_callback) -> bool:
+def launch_ue5(status_callback) -> str:
     """
-    Полностью автономный запуск UE5:
-    1. Найти UE5Editor.exe → запустить
-    2. Найти Epic Launcher → открыть
-    3. Скачать и установить Epic Launcher на D: → запустить
+    Автономный запуск/установка UE5.
+    Возвращает: 'launched' | 'launcher_opened' | 'installing'
     """
     # 1. Ищем UE5Editor.exe
     status_callback("🔍 Ищу Unreal Engine 5...")
@@ -96,32 +94,33 @@ def launch_ue5(status_callback) -> bool:
     if ue5_exe:
         status_callback(f"🚀 Запускаю UE5: {Path(ue5_exe).parent.parent.name}")
         subprocess.Popen([ue5_exe])
-        status_callback("⏳ UE5 запускается, подожди 30-60 секунд...")
-        return True
+        return "launched"
 
-    # 2. Ищем Epic Games Launcher
-    status_callback("🔍 UE5 не найден. Ищу Epic Games Launcher...")
+    # 2. UE5 НЕ УСТАНОВЛЕН — ищем Epic Launcher
+    status_callback("❌ UE5 не установлен на этом компьютере.")
+    status_callback("🔍 Ищу Epic Games Launcher...")
     epic = find_epic_launcher()
 
     if epic:
-        status_callback("🚀 Открываю Epic Games Launcher...")
+        _set_epic_default_install_path(r"D:\Epic Games")
+        status_callback("🚀 Открываю Epic Launcher. Устанавливаю UE5 на D:...")
         subprocess.Popen([epic])
-        status_callback(
-            "📋 Epic Launcher открыт!\n"
-            "Иди в 'Unreal Engine' → '+' → 'Install Engine'\n"
-            "Выбери путь D:\\Epic Games и нажми Install.\n"
-            "После установки скажи: 'запусти UE5'"
-        )
-        return True
+        # Фоновая автоустановка после логина
+        threading.Thread(
+            target=_auto_install_ue5_after_login,
+            args=(status_callback,),
+            daemon=True
+        ).start()
+        return "launcher_opened"
 
-    # 3. Качаем и ставим Epic Launcher на D: автоматически
-    status_callback("📥 Epic Launcher не найден. Скачиваю и устанавливаю на D:...")
+    # 3. Нет даже Launcher — скачиваем
+    status_callback("📥 Epic Launcher не найден. Скачиваю и устанавливаю...")
     threading.Thread(
         target=_install_epic_launcher_to_d,
         args=(status_callback,),
         daemon=True
     ).start()
-    return False
+    return "installing"
 
 
 def _install_epic_launcher_to_d(status_callback):
@@ -201,6 +200,101 @@ def _install_epic_launcher_to_d(status_callback):
             f"❌ Ошибка установки: {e}\n"
             "Скачай вручную: https://www.unrealengine.com/download\n"
             "Установи на D:\\Epic Games"
+        )
+
+
+def _auto_install_ue5_after_login(log_fn):
+    """
+    Ждёт логина в Epic Launcher, затем автоматически
+    нажимает Unreal Engine → '+' → Install → D:\\Epic Games.
+    """
+    import ctypes, time
+    log_fn("⏳ Жду пока ты войдёшь в Epic Games аккаунт...")
+
+    user32 = ctypes.windll.user32
+
+    def get_launcher_hwnd():
+        found = []
+        WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int))
+        def cb(hwnd, _):
+            buf = ctypes.create_unicode_buffer(256)
+            user32.GetWindowTextW(hwnd, buf, 256)
+            if "epic" in buf.value.lower() and user32.IsWindowVisible(hwnd):
+                found.append(hwnd)
+            return True
+        user32.EnumWindows(WNDENUMPROC(cb), None)
+        return found[0] if found else None
+
+    # Ждём появления окна лаунчера (до 3 мин)
+    hwnd = None
+    for _ in range(36):
+        hwnd = get_launcher_hwnd()
+        if hwnd:
+            break
+        time.sleep(5)
+
+    if not hwnd:
+        log_fn("⚠️ Epic Launcher не отвечает. Открой его вручную и войди в аккаунт.")
+        return
+
+    log_fn(
+        "✅ Epic Launcher открыт!\n"
+        "Сделай одно действие: войди в аккаунт Epic Games.\n"
+        "После входа я сам нажму Install UE5 на D:"
+    )
+
+    # Ждём логина — смотрим пока окно не поменяет заголовок или не появится контент
+    time.sleep(30)  # Даём время залогиниться
+
+    try:
+        import pyautogui
+        pyautogui.FAILSAFE = False
+
+        # Выводим окно на передний план
+        user32.SetForegroundWindow(hwnd)
+        time.sleep(1)
+
+        # Кликаем по "Unreal Engine" в левом меню лаунчера
+        # Лаунчер обычно 1200x750 — Unreal Engine tab ~левая панель
+        rect = ctypes.wintypes.RECT()
+        ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect))
+        win_x = rect.left
+        win_y = rect.top
+        win_w = rect.right - rect.left
+        win_h = rect.bottom - rect.top
+
+        # Unreal Engine кнопка — примерно 15% от ширины, 35% от высоты
+        ue_x = win_x + int(win_w * 0.08)
+        ue_y = win_y + int(win_h * 0.35)
+        pyautogui.click(ue_x, ue_y)
+        time.sleep(2)
+        log_fn("🖱️ Нажал 'Unreal Engine' в лаунчере...")
+
+        # Кликаем '+' (Install Engine) — правая часть, верх
+        plus_x = win_x + int(win_w * 0.85)
+        plus_y = win_y + int(win_h * 0.25)
+        pyautogui.click(plus_x, plus_y)
+        time.sleep(2)
+        log_fn("🖱️ Нажал '+' для добавления движка...")
+
+        # Ждём диалог выбора версии
+        time.sleep(3)
+        # Нажимаем Install (Enter обычно подтверждает)
+        pyautogui.press('enter')
+        time.sleep(2)
+
+        log_fn(
+            "🚀 Установка UE5 запущена!\n"
+            "Путь: D:\\Epic Games\n"
+            "Это займёт 30-60 минут (~30GB).\n"
+            "Когда установится — скажи 'запусти UE5'"
+        )
+
+    except Exception as e:
+        log_fn(
+            f"⚠️ Не смог автоматически нажать кнопки ({e}).\n"
+            "В Epic Launcher: Unreal Engine → '+' → Install\n"
+            "Путь установки: D:\\Epic Games"
         )
 
 

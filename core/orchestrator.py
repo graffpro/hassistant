@@ -321,18 +321,21 @@ class Orchestrator:
         ]
         if any(t == tr or t.startswith(tr) or tr in t for tr in launch_triggers):
             if self.ui_detector.is_ue5_open():
-                msg = "✅ UE5 уже запущен!"
+                msg = "✅ UE5 уже запущен и готов!"
                 self._emit_status("idle", msg)
                 return CommandResult(success=True, message=msg)
-            self._emit_status("thinking", "🚀 Запускаю Unreal Engine 5...")
+            self._emit_status("thinking", "🔍 Ищу Unreal Engine 5...")
             from core.autonomous_setup import launch_ue5
-            launched = launch_ue5(lambda m: self._emit_status("thinking", m))
-            if launched:
-                msg = "⏳ UE5 запускается, подожди 30-60 секунд..."
-                self._emit_status("idle", msg)
+            result = launch_ue5(lambda m: self._emit_status("thinking", m))
+            if result == "launched":
+                msg = "⏳ UE5 запускается... подожди 30-60 секунд, потом повтори команду."
+            elif result == "launcher_opened":
+                msg = ("🚀 Epic Launcher открыт и настроен.\n"
+                       "Войди в аккаунт Epic Games — после этого я автоматически\n"
+                       "нажму Install UE5 на D:\\Epic Games (~30GB, 30-60 мин).")
             else:
-                msg = "📥 Устанавливаю Epic Games Launcher на D:..."
-                self._emit_status("idle", msg)
+                msg = "📥 Скачиваю Epic Games Launcher... следи за статусом в чате."
+            self._emit_status("idle", msg)
             self.context.add_assistant_message(msg)
             return CommandResult(success=True, message=msg)
 
