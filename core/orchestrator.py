@@ -54,6 +54,10 @@ class Orchestrator:
         self._scanner = None
         # Blueprint генератор
         self._bp_gen = None
+        # Git интеграция
+        self._git = None
+        # Plugin installer
+        self._plugins = None
 
         # Запускаем фоновый захват экрана
         self.screen_capture.start_continuous()
@@ -86,6 +90,16 @@ class Orchestrator:
         """Подключает Blueprint генератор."""
         self._bp_gen = generator
         logger.info("Blueprint generator connected")
+
+    def set_git(self, git):
+        """Подключает Git интеграцию."""
+        self._git = git
+        logger.info("Git integration connected")
+
+    def set_plugin_installer(self, installer):
+        """Подключает Plugin installer."""
+        self._plugins = installer
+        logger.info("Plugin installer connected")
 
     def _on_user_message(self, text: str) -> None:
         """Вызывается при получении текстовой или голосовой команды."""
@@ -208,6 +222,12 @@ class Orchestrator:
         msg = f"✅ Готово! Выполнено {total} шагов."
         self._emit_status("idle", msg)
         self.context.add_assistant_message(msg)
+
+        # Авто-коммит изменений в git
+        if self._git:
+            task_desc = intent.raw_text[:60] if hasattr(intent, "raw_text") else "task"
+            self._git.auto_commit_after_task(task_desc)
+
         return CommandResult(success=True, message=msg, steps_executed=total, workflow_saved=True)
 
     def _try_builtin_workflow(self, intent) -> Optional[ActionPlan]:
@@ -287,6 +307,86 @@ class Orchestrator:
             self._emit_status("idle", msg)
             self.context.add_assistant_message(msg)
             return CommandResult(success=True, message=msg)
+
+        # ── GIT КОМАНДЫ ──────────────────────────────────────
+        if self._git:
+            if any(tr in t for tr in ["сохрани в гит", "гит коммит", "git commit",
+                                       "закоммить", "сохрани изменения в гит"]):
+                import threading as _th
+                _th.Thread(target=lambda: self._emit_status("idle", self._git.commit()), daemon=True).start()
+                self._emit_status("thinking", "💾 Коммичу изменения...")
+                return CommandResult(success=True, message="💾 Коммичу изменения...")
+
+            if any(tr in t for tr in ["гит статус", "git status", "что изменилось", "изменения в проекте"]):
+                msg = self._git.status()
+                self._emit_status("idle", msg)
+                return CommandResult(success=True, message=msg)
+
+            if any(tr in t for tr in ["гит история", "git log", "история коммитов", "что было сделано"]):
+                msg = self._git.log()
+                self._emit_status("idle", msg)
+                return CommandResult(success=True, message=msg)
+
+            if any(tr in t for tr in ["откати", "git revert", "отмени последнее", "вернуть назад"]):
+                import threading as _th
+                _th.Thread(target=lambda: self._emit_status("idle", self._git.rollback()), daemon=True).start()
+                self._emit_status("thinking", "↩️ Откатываю...")
+                return CommandResult(success=True, message="↩️ Откатываю...")
+
+            if any(tr in t for tr in ["создай гит", "init git", "инициализируй гит", "git init"]):
+                import threading as _th
+                _th.Thread(target=lambda: self._emit_status("idle", self._git.init_repo()), daemon=True).start()
+                self._emit_status("thinking", "🔧 Создаю Git репозиторий...")
+                return CommandResult(success=True, message="🔧 Создаю Git репозиторий...")
+
+        # ── PLUGIN КОМАНДЫ ────────────────────────────────────
+        if self._plugins:
+            install_triggers = ["установи плагин", "install plugin", "добавь плагин", "скачай плагин"]
+            search_triggers  = ["найди плагин", "search plugin", "плагины для", "какие плагины"]
+            list_triggers    = ["список плагинов", "installed plugins", "мои плагины", "какие плагины установлены"]
+            fab_triggers     = ["открой fab", "открой маркет", "fab marketplace", "магазин плагинов"]
+
+            if any(tr in t for tr in list_triggers):
+                msg = self._plugins.list_installed()
+                self._emit_status("idle", msg)
+                return CommandResult(success=True, message=msg)
+
+            if any(tr in t for tr in fab_triggers):
+                q = text
+                for tr in fab_triggers:
+                    q = q.lower().replace(tr, "").strip()
+                msg = self._plugins.open_fab(q)
+                self._emit_status("idle", msg)
+                return CommandResult(success=True, message=msg)
+
+            for tr in install_triggers:
+                if tr in t:
+                    plugin_name = text[text.lower().find(tr) + len(tr):].strip()
+                    import threading as _th
+                    _th.Thread(
+                        target=lambda n=plugin_name: self._emit_status(
+                            "idle", self._plugins.install_plugin(n)),
+                        daemon=True,
+                    ).start()
+                    self._emit_status("thinking", f"🔍 Ищу плагин '{plugin_name}'...")
+                    return CommandResult(success=True, message=f"🔍 Ищу плагин '{plugin_name}'...")
+
+            for tr in search_triggers:
+                if tr in t:
+                    plugin_name = text[text.lower().find(tr) + len(tr):].strip()
+                    found = self._plugins.find_plugin(plugin_name)
+                    if found:
+                        lines = [f"🔍 Найдено плагинов: {len(found)}"]
+                        for p in found:
+                            icon = "✅" if p.free else "💰"
+                            lines.append(f"  {icon} {p.name} — {p.description[:60]}")
+                            if p.url:
+                                lines.append(f"     🔗 {p.url}")
+                        msg = "\n".join(lines)
+                    else:
+                        msg = f"❌ Плагины по запросу '{plugin_name}' не найдены."
+                    self._emit_status("idle", msg)
+                    return CommandResult(success=True, message=msg)
 
         # ── ВОПРОСЫ О ПРОЕКТЕ ────────────────────────────────
         project_triggers = [

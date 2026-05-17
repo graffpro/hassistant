@@ -46,6 +46,8 @@ def main():
     from brain.blueprint_generator import BlueprintGenerator
     from learning.workflow_recorder import WorkflowRecorder
     from unreal.project_scanner import UE5ProjectScanner
+    from unreal.git_integration import UE5GitIntegration
+    from unreal.plugin_installer import UE5PluginInstaller
     from core.updater import AutoUpdater
 
     logger.info("Initializing modules...")
@@ -136,6 +138,15 @@ def main():
     # ── Blueprint Generator ───────────────────────────────────
     bp_gen = BlueprintGenerator(llm=llm, orchestrator=orchestrator)
     orchestrator.set_blueprint_generator(bp_gen)
+
+    # ── Git Integration ───────────────────────────────────────
+    git = UE5GitIntegration(llm=llm, scanner=scanner)
+    threading.Thread(target=git.setup, daemon=True).start()
+    orchestrator.set_git(git)
+
+    # ── Plugin Installer ──────────────────────────────────────
+    plugin_installer = UE5PluginInstaller(llm=llm, scanner=scanner)
+    orchestrator.set_plugin_installer(plugin_installer)
 
     # ── Output Log Monitor ───────────────────────────────────
     from unreal.log_monitor import UE5LogMonitor, LogAutoFixer
