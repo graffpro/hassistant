@@ -93,6 +93,9 @@ class ActionExecutor:
         self._focus_ue5()
         time.sleep(0.1)
 
+        if not step.value:
+            return False, "Shortcut value is None"
+
         keys = step.value.replace(" ", "").split("+")
         key_map = {
             "Ctrl": "ctrl", "Shift": "shift", "Alt": "alt",
@@ -159,7 +162,18 @@ class ActionExecutor:
         # Очищаем поле перед вводом
         pyautogui.hotkey("ctrl", "a")
         time.sleep(0.1)
-        pyautogui.typewrite(step.value or "", interval=0.05)
+        # Use clipboard paste to support Unicode/Cyrillic (typewrite only handles ASCII)
+        text = step.value or ""
+        try:
+            import win32clipboard
+            win32clipboard.OpenClipboard()
+            win32clipboard.EmptyClipboard()
+            win32clipboard.SetClipboardText(text, win32clipboard.CF_UNICODETEXT)
+            win32clipboard.CloseClipboard()
+            pyautogui.hotkey("ctrl", "v")
+        except Exception:
+            # Fallback: typewrite for ASCII-only text
+            pyautogui.typewrite(text, interval=0.05)
         logger.debug(f"Typed: {step.value!r} into {step.target}")
         time.sleep(0.2)
         return True, None
@@ -178,7 +192,9 @@ class ActionExecutor:
             if not src:
                 return False, f"Drag source not found: {step.target}"
             tx, ty = map(int, step.value.split(","))
-            pyautogui.drag(tx - src[0], ty - src[1], duration=0.5, button="left")
+            # moveTo source first, then dragTo absolute target
+            pyautogui.moveTo(src[0], src[1], duration=0.2)
+            pyautogui.dragTo(tx, ty, duration=0.5, button="left")
             return True, None
         except Exception as e:
             return False, str(e)

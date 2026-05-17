@@ -27,7 +27,7 @@ UE5_SHORTCUTS: dict[str, Shortcut] = {
     "new_level":        Shortcut("Ctrl+N",        "Новый уровень",                     "global"),
     "open_level":       Shortcut("Ctrl+Shift+O",  "Открыть уровень",                  "global"),
     "find_in_blueprints": Shortcut("Ctrl+Shift+F", "Поиск по всем Blueprint",         "global"),
-    "output_log":       Shortcut("Ctrl+Shift+O",  "Открыть Output Log",               "global"),
+    "output_log":       Shortcut("Ctrl+Shift+L",  "Открыть Output Log",               "global"),
 
     # === VIEWPORT ===
     "focus_selection":  Shortcut("F",            "Сфокусироваться на выделении",      "viewport"),

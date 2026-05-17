@@ -226,28 +226,32 @@ class Orchestrator:
         return None  # Не спецкоманда — обрабатываем как UE5 задачу
 
     def _on_confirmation_needed(self, data: dict):
-        """Показывает диалог подтверждения (вызывается в UI потоке)."""
+        """Schedule confirmation dialog on the main UI thread (bug fix: was called from worker thread)."""
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(0, lambda: self._show_confirmation_dialog(data))
+
+    def _show_confirmation_dialog(self, data: dict):
+        """Show confirmation dialog — must run in main thread."""
         from safety.confirmation_dialog import ConfirmationDialog
-        plan = data.get("plan")
-        reason = data.get("reason", "Опасная операция")
+        plan   = data.get("plan")
+        reason = data.get("reason", "Dangerous operation")
         intent = data.get("intent")
 
         action_desc = "\n".join(
             f"{s.step_id}. {s.description}" for s in plan.steps[:5]
         )
         if len(plan.steps) > 5:
-            action_desc += f"\n... ещё {len(plan.steps) - 5} шагов"
+            action_desc += f"\n... +{len(plan.steps) - 5} more steps"
 
         confirmed = ConfirmationDialog.ask(action_desc, reason)
         if confirmed and intent:
-            thread = threading.Thread(
+            threading.Thread(
                 target=self._execute_plan,
                 args=(plan, intent),
                 daemon=True
-            )
-            thread.start()
-        elif not confirmed:
-            self._emit_status("idle", "❌ Операция отменена пользователем")
+            ).start()
+        else:
+            self._emit_status("idle", "❌ Operation cancelled")
 
     def _emit_status(self, status: str, message: str):
         bus.emit(Events.STATUS_UPDATE, {"status": status, "message": message})

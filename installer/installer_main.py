@@ -299,7 +299,8 @@ class InstallerApp(tk.Tk):
         for cmd in ["python", "python3", "py"]:
             try:
                 r = subprocess.run([cmd, "--version"], capture_output=True, text=True, timeout=5)
-                if "3.1" in r.stdout and int(r.stdout.split(".")[1]) >= 11:
+                import re; m = re.search(r"3\.(\d+)", r.stdout)
+                if m and int(m.group(1)) >= 11:
                     self._log(f"  ✓ {r.stdout.strip()} уже установлен", "ok")
                     return True
             except Exception:
@@ -446,7 +447,9 @@ class InstallerApp(tk.Tk):
     def _download(self, name: str, url: str) -> Optional[str]:
         """Скачивает файл во временную папку. Показывает прогресс."""
         self._log(f"  Скачиваю {name}...", "")
-        tmp = tempfile.mktemp(suffix=".exe")
+        import os as _os
+        fd, tmp = tempfile.mkstemp(suffix=".exe")
+        _os.close(fd)
         try:
             def reporthook(count, block, total):
                 if total > 0:

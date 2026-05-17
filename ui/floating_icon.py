@@ -488,10 +488,11 @@ class MiniChatPopup(QWidget):
             text = result["text"].strip()
             os.unlink(tmp)
             if text:
-                # Отправляем в UI поток
-                from PyQt6.QtCore import QMetaObject, Q_ARG
-                self._input.setText(text)
-                self._send()
+                # Marshal to main UI thread safely
+                QTimer.singleShot(0, lambda t=text: (
+                    self._input.setText(t),
+                    self._send()
+                ))
         except Exception as e:
             logger.error(f"Transcribe error: {e}")
 

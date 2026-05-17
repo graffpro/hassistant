@@ -33,6 +33,31 @@ class ExperienceStore:
     def _conn(self):
         return sqlite3.connect(self.db_path)
 
+    @staticmethod
+    def _serialize_steps(steps: list) -> str:
+        """Safely serialize steps — handles ActionStep dataclasses and dicts."""
+        if not steps:
+            return "[]"
+        result = []
+        for s in steps:
+            if hasattr(s, "__dataclass_fields__"):
+                # ActionStep dataclass → dict
+                from dataclasses import asdict
+                result.append(asdict(s))
+            elif isinstance(s, dict):
+                # Already a dict (may contain ActionStep under "step" key)
+                row = {}
+                for k, v in s.items():
+                    if hasattr(v, "__dataclass_fields__"):
+                        from dataclasses import asdict
+                        row[k] = asdict(v)
+                    else:
+                        row[k] = v
+                result.append(row)
+            else:
+                result.append(str(s))
+        return json.dumps(result)
+
     def record(self, action: str, object_type: str, command: str,
                success: bool, steps: list = None, error: str = None, context: dict = None):
         with self._conn() as conn:
@@ -41,7 +66,7 @@ class ExperienceStore:
                    (action, object_type, command, success, error_message, steps_data, context)
                    VALUES (?,?,?,?,?,?,?)""",
                 (action, object_type, command, int(success),
-                 error, json.dumps(steps or []), json.dumps(context or {}))
+                 error, self._serialize_steps(steps), json.dumps(context or {}))
             )
         status = "✓" if success else "✗"
         logger.debug(f"Experience [{status}]: {action}/{object_type}")

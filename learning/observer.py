@@ -72,10 +72,16 @@ class WorkflowObserver:
 
     def stop_observing(self):
         self._running = False
-        if self._mouse:
-            self._mouse.stop()
-        if self._keyboard:
-            self._keyboard.stop()
+        try:
+            if self._mouse:
+                self._mouse.stop()
+        except Exception as e:
+            logger.debug(f"Mouse listener stop error: {e}")
+        try:
+            if self._keyboard:
+                self._keyboard.stop()
+        except Exception as e:
+            logger.debug(f"Keyboard listener stop error: {e}")
 
     def _record_action(self, action: UserAction):
         self._action_buffer.append(action)

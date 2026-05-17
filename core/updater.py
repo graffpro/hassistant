@@ -219,12 +219,20 @@ class AutoUpdater:
         python = sys.executable
         script = APP_DIR / "main.py"
 
-        subprocess.Popen([python, str(script)],
-                         cwd=str(APP_DIR),
-                         creationflags=subprocess.CREATE_NEW_CONSOLE)
+        flags = 0
+        if sys.platform == "win32":
+            flags = subprocess.CREATE_NEW_CONSOLE
+        subprocess.Popen([python, str(script)], cwd=str(APP_DIR), creationflags=flags)
 
-        # Завершаем текущий процесс
-        os._exit(0)
+        # Graceful Qt shutdown then exit
+        try:
+            from PyQt6.QtWidgets import QApplication
+            app = QApplication.instance()
+            if app:
+                app.quit()
+        except Exception:
+            pass
+        sys.exit(0)
 
     def _fetch_update_info(self) -> Optional[dict]:
         """Получает информацию об обновлении с сервера."""

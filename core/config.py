@@ -4,7 +4,6 @@ Global configuration for UE5 AI Assistant.
 import os
 from pathlib import Path
 from pydantic import BaseModel
-from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent.parent / ".env")
