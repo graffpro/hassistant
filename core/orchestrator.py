@@ -99,7 +99,13 @@ class Orchestrator:
             intent = self.intent_parser.parse(text)
             bus.emit(Events.INTENT_PARSED, intent)
 
-            # 1b. Разговорный fallback после парсинга
+            # 1b. Если intent=run — это команда запуска, не разговор
+            if str(intent.action).lower() == "run":
+                direct = self._handle_direct_commands("запусти уе5")
+                if direct:
+                    return direct
+
+            # 1c. Разговорный fallback после парсинга
             if self._is_conversational(text, intent):
                 return self._conversational_response(text)
 
@@ -311,13 +317,18 @@ class Orchestrator:
 
         # ── ЗАПУСК UE5 ───────────────────────────────────────
         launch_triggers = [
+            # латиница
             "запусти ue5", "запусти unreal", "запустить ue5",
             "открой ue5", "открой unreal", "старт ue5",
             "launch ue5", "open ue5", "start ue5",
+            # кириллица (УЕ5, УЕ, Анрил, Унреал)
+            "запусти уе5", "запусти уе", "запустить уе",
+            "открой уе5", "открой уе",
+            "запусти анрил", "запусти унреал", "запусти анреал",
             "запусти редактор", "запусти движок",
+            "запустить редактор", "запустить движок",
             "мне надо что бы ты запустил", "запусти его",
-            "нужно запустить ue", "запусти анрил",
-            "запусти унреал",
+            "нужно запустить", "нужен ue5", "нужен уе5",
         ]
         if any(t == tr or t.startswith(tr) or tr in t for tr in launch_triggers):
             if self.ui_detector.is_ue5_open():
@@ -398,11 +409,6 @@ class Orchestrator:
         for pat in conversational_patterns:
             if pat in t:
                 return True
-
-        # Очень короткие запросы без чёткого объекта
-        words = t.split()
-        if len(words) <= 3 and intent.object_name is None:
-            return True
 
         # Непонятное намерение
         action = str(intent.action).lower() if intent.action else "none"
