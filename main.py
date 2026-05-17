@@ -46,12 +46,11 @@ def main():
 
     logger.info("Initializing modules...")
 
-    # ── Запускаем Ollama если не запущен ─────────────────────
+    # ── Запускаем Ollama и прогреваем модель ─────────────────
     def _ensure_ollama():
-        import subprocess, time
+        import subprocess, time, requests as req
         try:
-            import requests
-            requests.get("http://localhost:11434", timeout=3)
+            req.get("http://localhost:11434", timeout=3)
             logger.info("Ollama already running")
         except Exception:
             logger.info("Starting Ollama server...")
@@ -59,10 +58,20 @@ def main():
                 subprocess.Popen(["ollama", "serve"],
                                  stdout=subprocess.DEVNULL,
                                  stderr=subprocess.DEVNULL)
-                time.sleep(3)
+                time.sleep(4)
                 logger.info("Ollama server started")
             except Exception as e:
                 logger.warning(f"Could not start Ollama: {e}")
+                return
+        # Прогрев модели — первый запрос всегда медленный (загрузка в RAM)
+        try:
+            logger.info("Warming up LLM model...")
+            req.post("http://localhost:11434/api/generate",
+                     json={"model": "qwen2.5:7b", "prompt": "hi", "stream": False},
+                     timeout=90)
+            logger.info("LLM model ready")
+        except Exception as e:
+            logger.warning(f"Model warmup failed (will load on first use): {e}")
     threading.Thread(target=_ensure_ollama, daemon=True).start()
 
     memory          = MemoryManager()
