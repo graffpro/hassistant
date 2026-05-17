@@ -44,10 +44,13 @@ def main():
     from brain.autonomous_agent import AutonomousAgent
     from brain.voice_input import VoiceInput
     from brain.blueprint_generator import BlueprintGenerator
+    from brain.proactive_assistant import ProactiveAssistant
     from learning.workflow_recorder import WorkflowRecorder
     from unreal.project_scanner import UE5ProjectScanner
     from unreal.git_integration import UE5GitIntegration
     from unreal.plugin_installer import UE5PluginInstaller
+    from core.crash_recovery import CrashRecovery
+    from core.perf_monitor import PerfMonitor
     from core.updater import AutoUpdater
 
     logger.info("Initializing modules...")
@@ -147,6 +150,25 @@ def main():
     # ── Plugin Installer ──────────────────────────────────────
     plugin_installer = UE5PluginInstaller(llm=llm, scanner=scanner)
     orchestrator.set_plugin_installer(plugin_installer)
+
+    # ── Proactive Assistant ───────────────────────────────────
+    proactive = ProactiveAssistant(
+        llm=llm, screen_capture=screen_capture, ui_detector=ui_detector,
+        orchestrator=orchestrator, memory=memory, scanner=scanner,
+    )
+    proactive.start()
+
+    # ── Crash Recovery ────────────────────────────────────────
+    crash_recovery = CrashRecovery(
+        ui_detector=ui_detector, scanner=scanner,
+        memory=memory, orchestrator=orchestrator,
+    )
+    crash_recovery.start()
+
+    # ── Performance Monitor ───────────────────────────────────
+    perf = PerfMonitor()
+    perf.start()
+    orchestrator.set_perf_monitor(perf)
 
     # ── Output Log Monitor ───────────────────────────────────
     from unreal.log_monitor import UE5LogMonitor, LogAutoFixer

@@ -58,6 +58,8 @@ class Orchestrator:
         self._git = None
         # Plugin installer
         self._plugins = None
+        # Монитор производительности
+        self._perf = None
 
         # Запускаем фоновый захват экрана
         self.screen_capture.start_continuous()
@@ -100,6 +102,11 @@ class Orchestrator:
         """Подключает Plugin installer."""
         self._plugins = installer
         logger.info("Plugin installer connected")
+
+    def set_perf_monitor(self, perf):
+        """Подключает монитор производительности."""
+        self._perf = perf
+        logger.info("Performance monitor connected")
 
     def _on_user_message(self, text: str) -> None:
         """Вызывается при получении текстовой или голосовой команды."""
@@ -417,6 +424,14 @@ class Orchestrator:
                 args=(text,),
                 daemon=True,
             ).start()
+            return CommandResult(success=True, message=msg)
+
+        # ── СТАТУС СИСТЕМЫ ────────────────────────────────────
+        perf_triggers = ["статус системы", "сколько памяти", "ресурсы",
+                         "производительность", "ram", "cpu", "память компьютера"]
+        if any(tr in t for tr in perf_triggers) and self._perf:
+            msg = self._perf.status_message()
+            self._emit_status("idle", msg)
             return CommandResult(success=True, message=msg)
 
         if any(w in t for w in ["список workflow", "что помнишь", "мои workflow"]):
